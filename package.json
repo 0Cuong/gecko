@@ -1,0 +1,57 @@
+{
+    "name": "gecko",
+    "version": "1.0.0",
+    "description": "A minimal Discord music engine. Fast. Stable. Lightweight.",
+    "author": {
+        "name": "0Cuong",
+        "url": "https://github.com/0Cuong"
+    },
+    "license": "CC-BY-NC-ND-4.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "swc src -d dist --strip-leading-paths",
+        "build:clean": "rimraf dist && swc src -d dist --strip-leading-paths",
+        "typecheck": "tsc --noEmit",
+        "test": "pnpm run typecheck && pnpm run build && node tests/core.test.mjs && node tests/runtime.test.mjs",
+        "test:soak": "pnpm run build && node --expose-gc tests/soak.mjs",
+        "start": "node -r dotenv/config dist/index.js",
+        "dev": "swc src -d dist --strip-leading-paths && node -r dotenv/config dist/index.js"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "overrides": {
+        "tar": "^7.5.21"
+    },
+    "dependencies": {
+        "@discordjs/opus": "^0.10.0",
+        "@discordjs/voice": "^0.19.2",
+        "@distube/ytdl-core": "^4.16.12",
+        "@swc/cli": "0.8.1",
+        "@swc/core": "1.15.43",
+        "discord.js": "^14.27.0",
+        "dotenv": "17.4.2",
+        "ffmpeg-static": "^5.3.0",
+        "fluent-ffmpeg": "^2.1.3",
+        "got": "15.1.0",
+        "libsodium-wrappers": "^0.8.4",
+        "opusscript": "^0.0.8",
+        "play-dl": "^1.9.7",
+        "prism-media": "^1.3.5",
+        "rimraf": "^6.1.3",
+        "sodium-native": "^5.1.0",
+        "tweetnacl": "1.0.3",
+        "undici": "^8.10.0"
+    },
+    "devDependencies": {
+        "@types/node": "24.13.2",
+        "archiver": "^8.0.0",
+        "typescript": "6.0.3"
+    },
+    "allowScripts": {
+        "@swc/core@1.15.43": true,
+        "ffmpeg-static@5.3.0": true,
+        "@discordjs/opus@0.10.0": true
+    }
+}

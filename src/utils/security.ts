@@ -1,0 +1,373 @@
+import { URL } from "node:url";
+import net from "node:net";
+
+export interface CooldownOptions {
+    userId?: string;
+    commandName?: string;
+    command?: string;
+    key?: string;
+    cooldownMs?: number;
+    cooldownSec?: number;
+    cooldownSeconds?: number;
+    cooldown?: number;
+    interaction?: any;
+}
+
+export class CooldownResult {
+    public readonly onCooldown: boolean;
+    public readonly limited: boolean;
+    public readonly isCooldown: boolean;
+    public readonly remaining: number;
+    public readonly remainingMs: number;
+    public readonly remainingSec: number;
+    public readonly cooldownMs: number;
+    public readonly resetAt: number;
+
+    constructor(onCooldown: boolean, remainingMs: number, cooldownMs: number, resetAt: number) {
+        this.onCooldown = onCooldown;
+        this.limited = onCooldown;
+        this.isCooldown = onCooldown;
+        this.remaining = remainingMs;
+        this.remainingMs = remainingMs;
+        this.remainingSec = Math.ceil(remainingMs / 1000);
+        this.cooldownMs = cooldownMs;
+        this.resetAt = resetAt;
+    }
+
+    public valueOf(): number {
+        return this.remainingMs;
+    }
+
+    public [Symbol.toPrimitive](hint: string): boolean | number | string {
+        if (hint === "number") return this.remainingMs;
+        if (hint === "string") return `${this.remainingSec}s`;
+        return this.onCooldown;
+    }
+}
+
+export class SecurityManager {
+    public static readonly MAX_PLAYLIST_SIZE = 100;
+
+    private static readonly cooldowns = new Map<string, number>();
+    private static readonly MAX_COOLDOWN_ENTRIES = 10_000;
+    private static cleanupTimer: NodeJS.Timeout | null = null;
+
+    static {
+        if (typeof setInterval !== "undefined") {
+            SecurityManager.cleanupTimer = setInterval(() => {
+                SecurityManager.cleanupExpiredCooldowns();
+            }, 30_000);
+
+            if (SecurityManager.cleanupTimer && typeof SecurityManager.cleanupTimer.unref === "function") {
+                SecurityManager.cleanupTimer.unref();
+            }
+        }
+    }
+
+    /**
+     * Kiểm tra một IP có thuộc dải IP nội bộ/riêng tư (RFC 1918, RFC 4193, Loopback, Link-Local) hay không.
+     */
+    public static isPrivateIp(ip: string): boolean {
+        if (!net.isIP(ip)) return false;
+        
+        if (net.isIPv4(ip)) {
+            const parts = ip.split(".").map(Number);
+            if (parts[0] === 127) return true; // Loopback
+            if (parts[0] === 10) return true; // Class A Private
+            if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // Class B Private
+            if (parts[0] === 192 && parts[1] === 168) return true; // Class C Private
+            if (parts[0] === 169 && parts[1] === 254) return true; // Link-local / AWS Metadata
+            if (parts[0] === 0) return true;
+        } else if (net.isIPv6(ip)) {
+            const lower = ip.toLowerCase();
+            if (lower === "::1" || lower === "::") return true;
+            if (lower.startsWith("fe80:")) return true; // Link-local
+            if (lower.startsWith("fc00:") || lower.startsWith("fd00:")) return true; // Unique local
+        }
+        return false;
+    }
+
+    private static readonly WHITELISTED_DOMAINS = new Set([
+        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com",
+        "spotify.com", "open.spotify.com", "play.spotify.com", "spotify.link",
+        "soundcloud.com", "www.soundcloud.com", "m.soundcloud.com", "snd.sc",
+        "tiktok.com", "www.tiktok.com", "vm.tiktok.com", "vt.tiktok.com", "tikwm.com", "www.tikwm.com",
+        "i.ytimg.com", "yt3.ggpht.com"
+    ]);
+
+    /**
+     * Đảm bảo URL là công khai và an toàn, ngăn chặn SSRF.
+     */
+    public static async assertPublicHttpUrl(urlStr: string): Promise<void> {
+        if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
+            throw new Error(`Forbidden protocol or invalid URL`);
+        }
+
+        let parsed: URL;
+        try {
+            parsed = new URL(urlStr);
+        } catch {
+            throw new Error(`Invalid URL format: ${urlStr}`);
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+        if (SecurityManager.WHITELISTED_DOMAINS.has(hostname)) {
+            return;
+        }
+
+        if (hostname === "localhost" || hostname.endsWith(".local")) {
+            throw new Error(`Access to local domain is forbidden: ${hostname}`);
+        }
+
+        if (net.isIP(hostname) && this.isPrivateIp(hostname)) {
+            throw new Error(`Access to private IP is forbidden: ${hostname}`);
+        }
+    }
+
+    /**
+     * Production Discord Bot Cooldown System.
+     * Supports slash commands, interactionCreate events, user IDs, command names, options objects, and seconds/milliseconds.
+     */
+    public static checkCooldown(
+        target: any,
+        commandOrCooldown?: any,
+        cooldownMsOrSec?: number,
+        scope?: string
+    ): CooldownResult {
+        const { userId, commandName, cooldownMs } = SecurityManager.parseCooldownArgs(
+            target,
+            commandOrCooldown,
+            cooldownMsOrSec
+        );
+
+        const key = `${userId}:${commandName}`;
+        const now = Date.now();
+        const existingExpiry = SecurityManager.cooldowns.get(key);
+
+        if (existingExpiry !== undefined && now < existingExpiry) {
+            const remainingMs = existingExpiry - now;
+            return new CooldownResult(true, remainingMs, cooldownMs, existingExpiry);
+        }
+
+        const newExpiry = now + cooldownMs;
+        if (cooldownMs > 0) {
+            SecurityManager.setCooldownEntry(key, newExpiry);
+        }
+
+        return new CooldownResult(false, 0, cooldownMs, newExpiry);
+    }
+
+    /**
+     * Retrieves remaining cooldown in milliseconds without setting or modifying state.
+     */
+    public static getRemainingCooldown(target: any, commandOrCooldown?: any): number {
+        const { userId, commandName } = SecurityManager.parseCooldownArgs(target, commandOrCooldown);
+        const key = `${userId}:${commandName}`;
+        const existingExpiry = SecurityManager.cooldowns.get(key);
+        if (!existingExpiry) return 0;
+        const remaining = existingExpiry - Date.now();
+        return remaining > 0 ? remaining : 0;
+    }
+
+    /**
+     * Checks if a user or interaction is currently on cooldown without modifying state.
+     */
+    public static isOnCooldown(target: any, commandOrCooldown?: any): boolean {
+        return SecurityManager.getRemainingCooldown(target, commandOrCooldown) > 0;
+    }
+
+    /**
+     * Resets the cooldown for a specific user and command.
+     */
+    public static resetCooldown(target: any, commandOrCooldown?: any): boolean {
+        const { userId, commandName } = SecurityManager.parseCooldownArgs(target, commandOrCooldown);
+        const key = `${userId}:${commandName}`;
+        return SecurityManager.cooldowns.delete(key);
+    }
+
+    /**
+     * Clears all active cooldown entries.
+     */
+    public static clearAllCooldowns(): void {
+        SecurityManager.cooldowns.clear();
+    }
+
+    /**
+     * Automatic / Manual sweep of expired cooldown entries to prevent memory leaks.
+     */
+    public static cleanupExpiredCooldowns(): number {
+        const now = Date.now();
+        let deletedCount = 0;
+        for (const [key, expiry] of SecurityManager.cooldowns.entries()) {
+            if (now >= expiry) {
+                SecurityManager.cooldowns.delete(key);
+                deletedCount++;
+            }
+        }
+        return deletedCount;
+    }
+
+    // Instance method wrappers to guarantee callers can call methods on instance references
+    public get MAX_PLAYLIST_SIZE(): number {
+        return SecurityManager.MAX_PLAYLIST_SIZE;
+    }
+
+    public isPrivateIp(ip: string): boolean {
+        return SecurityManager.isPrivateIp(ip);
+    }
+
+    public assertPublicHttpUrl(urlStr: string): Promise<void> {
+        return SecurityManager.assertPublicHttpUrl(urlStr);
+    }
+
+    public checkCooldown(
+        target: any,
+        commandOrCooldown?: any,
+        cooldownMsOrSec?: number,
+        scope?: string
+    ): CooldownResult {
+        return SecurityManager.checkCooldown(target, commandOrCooldown, cooldownMsOrSec, scope);
+    }
+
+    public getRemainingCooldown(target: any, commandOrCooldown?: any): number {
+        return SecurityManager.getRemainingCooldown(target, commandOrCooldown);
+    }
+
+    public isOnCooldown(target: any, commandOrCooldown?: any): boolean {
+        return SecurityManager.isOnCooldown(target, commandOrCooldown);
+    }
+
+    public resetCooldown(target: any, commandOrCooldown?: any): boolean {
+        return SecurityManager.resetCooldown(target, commandOrCooldown);
+    }
+
+    public clearAllCooldowns(): void {
+        SecurityManager.clearAllCooldowns();
+    }
+
+    public cleanupExpiredCooldowns(): number {
+        return SecurityManager.cleanupExpiredCooldowns();
+    }
+
+    private static setCooldownEntry(key: string, expiry: number): void {
+        if (SecurityManager.cooldowns.size >= SecurityManager.MAX_COOLDOWN_ENTRIES) {
+            SecurityManager.cleanupExpiredCooldowns();
+            if (SecurityManager.cooldowns.size >= SecurityManager.MAX_COOLDOWN_ENTRIES) {
+                const firstKey = SecurityManager.cooldowns.keys().next().value;
+                if (firstKey !== undefined) {
+                    SecurityManager.cooldowns.delete(firstKey);
+                }
+            }
+        }
+        SecurityManager.cooldowns.set(key, expiry);
+    }
+
+    private static parseCooldownArgs(
+        target: any,
+        commandOrCooldown?: any,
+        cooldownMsOrSec?: number
+    ): { userId: string; commandName: string; cooldownMs: number } {
+        let userId = "global_user";
+        let commandName = "global_command";
+        let rawCooldown: number | undefined = undefined;
+
+        const DEFAULT_COOLDOWN_MS = 3000;
+
+        if (
+            typeof target === "object" &&
+            target !== null &&
+            !target.user &&
+            !target.member &&
+            !target.author &&
+            (target.userId || target.commandName || target.key || target.cooldownMs || target.cooldownSec || target.interaction)
+        ) {
+            const opts = target as CooldownOptions;
+            if (opts.interaction) {
+                userId = SecurityManager.extractUserId(opts.interaction) || opts.userId || "global_user";
+                commandName = opts.commandName || opts.command || SecurityManager.extractCommandName(opts.interaction);
+            } else {
+                userId = opts.userId || opts.key || "global_user";
+                commandName = opts.commandName || opts.command || "global_command";
+            }
+            rawCooldown = opts.cooldownMs ?? ((opts.cooldownSec ?? opts.cooldownSeconds) !== undefined ? (opts.cooldownSec ?? opts.cooldownSeconds)! * 1000 : opts.cooldown);
+        } else if (typeof target === "object" && target !== null) {
+            userId = SecurityManager.extractUserId(target) || "global_user";
+
+            if (typeof commandOrCooldown === "string") {
+                commandName = commandOrCooldown;
+                rawCooldown = cooldownMsOrSec;
+            } else if (typeof commandOrCooldown === "number") {
+                commandName = SecurityManager.extractCommandName(target);
+                rawCooldown = commandOrCooldown;
+            } else {
+                commandName = SecurityManager.extractCommandName(target);
+                rawCooldown = cooldownMsOrSec;
+            }
+        } else if (typeof target === "string") {
+            userId = target;
+
+            if (typeof commandOrCooldown === "string") {
+                commandName = commandOrCooldown;
+                rawCooldown = cooldownMsOrSec;
+            } else if (typeof commandOrCooldown === "number") {
+                commandName = "global_command";
+                rawCooldown = commandOrCooldown;
+            } else {
+                commandName = "global_command";
+                rawCooldown = cooldownMsOrSec;
+            }
+        }
+
+        const cooldownMs = SecurityManager.normalizeCooldownMs(rawCooldown, DEFAULT_COOLDOWN_MS);
+        return { userId, commandName, cooldownMs };
+    }
+
+    private static extractUserId(target: any): string | null {
+        if (!target) return null;
+        if (typeof target === "string") return target;
+        if (target.user && typeof target.user.id === "string") {
+            return target.user.id;
+        }
+        if (target.member?.user && typeof target.member.user.id === "string") {
+            return target.member.user.id;
+        }
+        if (target.author && typeof target.author.id === "string") {
+            return target.author.id;
+        }
+        if (typeof target.id === "string") {
+            return target.id;
+        }
+        return null;
+    }
+
+    private static extractCommandName(target: any): string {
+        if (!target) return "default";
+        if (typeof target === "string") return target;
+        if (typeof target.commandName === "string" && target.commandName) {
+            return target.commandName;
+        }
+        if (typeof target.customId === "string" && target.customId) {
+            return target.customId;
+        }
+        if (typeof target.name === "string" && target.name) {
+            return target.name;
+        }
+        if (typeof target.id === "string" && target.id) {
+            return target.id;
+        }
+        return "default";
+    }
+
+    private static normalizeCooldownMs(rawVal: number | undefined, defaultMs: number): number {
+        if (rawVal === undefined || rawVal === null || Number.isNaN(rawVal)) {
+            return defaultMs;
+        }
+        if (rawVal <= 0) return 0;
+        if (rawVal <= 300) {
+            return Math.round(rawVal * 1000);
+        }
+        return Math.round(rawVal);
+    }
+}
+
+export const securityManager = SecurityManager;

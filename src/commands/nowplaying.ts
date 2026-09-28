@@ -40,7 +40,7 @@ export default {
             .addFields(
                 { name: "Duration", value: song.isLive ? "🔴 LIVE" : formatDuration(song.duration), inline: true },
                 { name: "Requested by", value: requestedBy, inline: true },
-                { name: "Volume", value: `${queue.volume ?? 100}%`, inline: true },
+                { name: "Volume", value: `${Math.round((queue.volume ?? 1) * 100)}%`, inline: true },
                 { name: "Loop", value: loopStatus, inline: true },
                 { name: "Shuffle", value: queue.shuffle ? "on" : "off", inline: true },
                 { name: "Queue", value: `${songCount} song${songCount !== 1 ? "s" : ""}`, inline: true },

@@ -256,6 +256,14 @@ export default {
         });
 
         collector.on("collect", async (i: any) => {
+            if (i.user.id !== userId) {
+                await i.reply({
+                    content: "Only the user who ran this `/queue` command can interact with this controller. Use `/queue` to open your own controller.",
+                    flags: MessageFlags.Ephemeral,
+                });
+                return;
+            }
+
             const member = i.member as GuildMember;
             const voiceChannel = member?.voice?.channel;
             
@@ -365,7 +373,7 @@ export default {
                 
                 response.edit({
                     components: disabledComponents
-                });
+                }).catch(() => {});
             } catch {}
         });
     },

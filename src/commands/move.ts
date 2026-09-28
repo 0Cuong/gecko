@@ -9,16 +9,16 @@ import { embed } from "../utils/embeds.js";
 export default {
     data: new SlashCommandBuilder()
         .setName("move")
-        .setDescription("Di chuyển vị trí của một bài hát trong hàng đợi.")
+        .setDescription("Move a track to a different position in the queue.")
         .addIntegerOption(option =>
             option.setName("track")
-                .setDescription("Vị trí hiện tại của bài hát muốn di chuyển (ví dụ: 3)")
+                .setDescription("Current position of the song to move (e.g. 3)")
                 .setRequired(true)
                 .setMinValue(2)
         )
         .addIntegerOption(option =>
             option.setName("position")
-                .setDescription("Vị trí mới muốn chuyển đến (ví dụ: 2)")
+                .setDescription("New position to move the song to (e.g. 2)")
                 .setRequired(true)
                 .setMinValue(2)
         ),
@@ -29,7 +29,7 @@ export default {
 
         if (!queue || queue.songs.length === 0) {
             await interaction.reply({ 
-                embeds: [embed("info", "Hàng đợi hiện đang trống.")],
+                embeds: [embed("warn", "⚠️ The queue is currently empty.")],
                 flags: MessageFlags.Ephemeral
             });
             return;
@@ -38,10 +38,10 @@ export default {
         const member = interaction.member as GuildMember;
         const voiceChannel = member?.voice?.channel;
         
-        // Xác thực người dùng có ở cùng kênh thoại với Bot hay không
+        // Ensure user is in the same voice channel as the bot
         if (!voiceChannel || !queue.connection || voiceChannel.id !== queue.connection.joinConfig.channelId) {
             await interaction.reply({
-                embeds: [embed("error", "Bạn phải ở cùng kênh thoại với Bot để thực hiện lệnh này.")],
+                embeds: [embed("error", "❌ You must be in the same voice channel as the bot to move tracks.")],
                 flags: MessageFlags.Ephemeral
             });
             return;
@@ -50,16 +50,13 @@ export default {
         const trackPos = interaction.options.getInteger("track", true);
         const targetPos = interaction.options.getInteger("position", true);
 
-        // Bài hát đang phát (currentIndex) có vị trí 1-based là currentIndex + 1
         const currentPlayingPos = queue.currentIndex + 1;
         const maxPos = queue.songs.length;
-
-        // Chỉ cho phép di chuyển các bài hát nằm trong danh sách chờ (bắt đầu từ vị trí kế tiếp bài đang phát)
         const minAllowedPos = currentPlayingPos + 1;
 
         if (trackPos < minAllowedPos || trackPos > maxPos) {
             await interaction.reply({
-                embeds: [embed("error", `Vị trí bài hát không hợp lệ. Bạn chỉ có thể chọn bài hát chờ từ vị trí **${minAllowedPos}** đến **${maxPos}**.`)],
+                embeds: [embed("error", `❌ Invalid track position. You can only move upcoming tracks between **#${minAllowedPos}** and **#${maxPos}**.`)],
                 flags: MessageFlags.Ephemeral
             });
             return;
@@ -67,7 +64,7 @@ export default {
 
         if (targetPos < minAllowedPos || targetPos > maxPos) {
             await interaction.reply({
-                embeds: [embed("error", `Vị trí đích không hợp lệ. Bạn chỉ có thể chuyển bài hát tới vị trí chờ từ **${minAllowedPos}** đến **${maxPos}**.`)],
+                embeds: [embed("error", `❌ Invalid target position. You can only move to a position between **#${minAllowedPos}** and **#${maxPos}**.`)],
                 flags: MessageFlags.Ephemeral
             });
             return;
@@ -75,7 +72,7 @@ export default {
 
         if (trackPos === targetPos) {
             await interaction.reply({
-                embeds: [embed("info", "Bài hát đã ở sẵn vị trí này rồi.")],
+                embeds: [embed("info", "ℹ️ That song is already at that position.")],
                 flags: MessageFlags.Ephemeral
             });
             return;
@@ -84,27 +81,25 @@ export default {
         const trackToMove = queue.songs[trackPos - 1];
         if (!trackToMove) {
             await interaction.reply({
-                embeds: [embed("error", "Không tìm thấy bài hát yêu cầu.")],
+                embeds: [embed("error", "❌ Could not find the requested track in the queue.")],
                 flags: MessageFlags.Ephemeral
             });
             return;
         }
 
-        // Thực hiện di chuyển vị trí bài hát (sử dụng 1-based index)
         const moved = queue.move(trackPos, targetPos);
 
         if (moved) {
-            // Cập nhật lại trình phát nhạc nền nếu hàng đợi thay đổi cấu trúc
             if (typeof queue.queueUpdate === "function") {
                 queue.queueUpdate(client);
             }
 
             await interaction.reply({
-                embeds: [embed("success", `Đã di chuyển bài hát **[${trackToMove.title}](${trackToMove.webpageUrl})** từ vị trí **#${trackPos}** sang **#${targetPos}**.`)]
+                embeds: [embed("success", `↕️ Moved **[${trackToMove.title}](${trackToMove.webpageUrl})** from position **#${trackPos}** to **#${targetPos}**.`)]
             });
         } else {
             await interaction.reply({
-                embeds: [embed("error", "Không thể di chuyển bài hát. Vui lòng kiểm tra lại.")],
+                embeds: [embed("error", "❌ Failed to move track. Please check the positions and try again.")],
                 flags: MessageFlags.Ephemeral
             });
         }

@@ -63,6 +63,7 @@ export class GuildPlaybackController {
     private readonly onPlayerStateChange = this.handlePlayerStateChange.bind(this);
     private readonly onPlayerError = this.handlePlayerError.bind(this);
     private readonly onConnectionStateChange = this.handleConnectionStateChange.bind(this);
+    private readonly onVolumeChange = this.handleVolumeChange.bind(this);
 
     public constructor(
         private readonly client: GeckoClient,
@@ -74,6 +75,7 @@ export class GuildPlaybackController {
         this.queue.player.on("stateChange", this.onPlayerStateChange);
         this.queue.on("playerError", this.onPlayerError);
         this.queue.on("connectionStateChange", this.onConnectionStateChange);
+        this.queue.on("volumeChange", this.onVolumeChange);
     }
 
     public async ensurePlayback(): Promise<void> {
@@ -172,14 +174,14 @@ export class GuildPlaybackController {
         return Boolean(this.active) || this.starting;
     }
 
-    public skip(): void {
-        this.runTransition("skip", () => this.skipLocked());
+    public skip(advance = true): void {
+        this.runTransition("skip", () => this.skipLocked(advance));
     }
 
-    private skipLocked(): void {
+    private skipLocked(advance = true): void {
         if (this.destroyed) return;
+        const wasStarting = this.starting;
         this.token += 1;
-        this.starting = false;
         this.clearRetryTimer();
         this.clearPrefetchTimer();
         this.clearPrefetch();
@@ -203,8 +205,43 @@ export class GuildPlaybackController {
         this.retryManager.reset();
         this.queue.setLifecycle("STOPPED");
         this.queue.setPlaying(false);
-        this.queue.advance();
-        this.scheduleEnsurePlayback();
+        if (advance) {
+            this.queue.advance();
+        }
+        if (!wasStarting) {
+            this.scheduleEnsurePlayback();
+        }
+    }
+
+    public stop(): void {
+        this.runTransition("stop", () => this.stopLocked());
+    }
+
+    private stopLocked(): void {
+        if (this.destroyed) return;
+        this.token += 1;
+        this.clearRetryTimer();
+        this.clearPrefetchTimer();
+        this.clearPrefetch();
+
+        if (this.active) {
+            const pipeline = this.active.pipeline;
+            this.active = null;
+            pipeline.close();
+        }
+
+        const playerWasActive = this.queue.player.state.status !== AudioPlayerStatus.Idle;
+        this.ignoreNextIdle = playerWasActive;
+        if (playerWasActive) {
+            this.queue.player.stop(true);
+        }
+
+        this.retryManager.reset();
+        this.queue.clearAll();
+        void this.queue.cleanupNowPlayingMessage();
+        this.queue.setLifecycle("STOPPED");
+        this.queue.setPlaying(false);
+        this.enterIdle();
     }
 
     public destroy(): void {
@@ -223,6 +260,7 @@ export class GuildPlaybackController {
         this.queue.player.off("stateChange", this.onPlayerStateChange);
         this.queue.off("playerError", this.onPlayerError);
         this.queue.off("connectionStateChange", this.onConnectionStateChange);
+        this.queue.off("volumeChange", this.onVolumeChange);
 
         if (this.active) {
             const pipeline = this.active.pipeline;
@@ -284,6 +322,16 @@ export class GuildPlaybackController {
         }
     }
 
+    private handleVolumeChange(newVolume: number): void {
+        if (this.destroyed) return;
+        const volume = Number.isFinite(newVolume)
+            ? Math.max(0.01, Math.min(2.0, newVolume > 2 ? newVolume / 100 : newVolume))
+            : 1.0;
+        if (this.active?.pipeline.resource.volume) {
+            this.active.pipeline.resource.volume.setVolume(volume);
+        }
+    }
+
     private markStarted(): void {
         const active = this.active;
         if (!active || active.started) return;
@@ -297,6 +345,9 @@ export class GuildPlaybackController {
     private completeCurrentTrack(): void {
         const active = this.active;
         if (!active) return;
+        this.token += 1;
+        this.clearRetryTimer();
+        this.clearPrefetchTimer();
         this.active = null;
         active.pipeline.close();
         this.retryManager.reset();

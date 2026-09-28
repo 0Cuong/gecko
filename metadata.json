@@ -1,0 +1,6 @@
+{
+  "name": "Gecko Discord Music Bot",
+  "description": "A minimal, fast, stable, and lightweight Discord music engine and bot with built-in health monitoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -184,7 +184,8 @@ export default {
                 return;
             }
 
-            const wasEmpty = queue.songs.length === 0 && !queue.isPlaying();
+            const shouldStartPlayback = !queue.isPlaying();
+            const wasEmpty = queue.songs.length === 0;
             const acceptedSongs = queue.addMany(songs);
 
             if (acceptedSongs.length === 0) {
@@ -196,7 +197,7 @@ export default {
                 return;
             }
 
-            if (wasEmpty) {
+            if (shouldStartPlayback) {
                 queue.suppressNowPlaying = true;
                 const targetQueue = queue;
 

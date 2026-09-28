@@ -1,5 +1,7 @@
 import { URL } from "node:url";
 import net from "node:net";
+import dns from "node:dns/promises";
+import type { GuildMember } from "discord.js";
 
 export interface CooldownOptions {
     userId?: string;
@@ -99,6 +101,10 @@ export class SecurityManager {
      * Đảm bảo URL là công khai và an toàn, ngăn chặn SSRF.
      */
     public static async assertPublicHttpUrl(urlStr: string): Promise<void> {
+        if (!urlStr || typeof urlStr !== "string") {
+            throw new Error(`Invalid or empty URL`);
+        }
+
         if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
             throw new Error(`Forbidden protocol or invalid URL`);
         }
@@ -115,12 +121,27 @@ export class SecurityManager {
             return;
         }
 
-        if (hostname === "localhost" || hostname.endsWith(".local")) {
+        if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".onion")) {
             throw new Error(`Access to local domain is forbidden: ${hostname}`);
         }
 
-        if (net.isIP(hostname) && this.isPrivateIp(hostname)) {
-            throw new Error(`Access to private IP is forbidden: ${hostname}`);
+        if (net.isIP(hostname)) {
+            if (this.isPrivateIp(hostname)) {
+                throw new Error(`Access to private IP is forbidden: ${hostname}`);
+            }
+        } else {
+            try {
+                const addresses = await dns.lookup(hostname, { all: true });
+                for (const addr of addresses) {
+                    if (this.isPrivateIp(addr.address)) {
+                        throw new Error(`Access to private IP is forbidden: ${hostname} resolved to ${addr.address}`);
+                    }
+                }
+            } catch (err: unknown) {
+                if (err instanceof Error && err.message.includes("Access to private IP")) {
+                    throw err;
+                }
+            }
         }
     }
 
@@ -371,3 +392,45 @@ export class SecurityManager {
 }
 
 export const securityManager = SecurityManager;
+
+/**
+ * Validates that an interaction member is connected to the same voice channel as the bot queue.
+ */
+export function assertSameVoiceChannel(
+    member: GuildMember | null | undefined,
+    queue: { connection: { joinConfig: { channelId: string | null } } | null } | null | undefined
+): boolean {
+    if (!member || !queue || !queue.connection) return false;
+    const voiceChannel = member.voice?.channel;
+    const botChannelId = queue.connection.joinConfig.channelId;
+    if (!voiceChannel || !botChannelId || voiceChannel.id !== botChannelId) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Sanitizes errors before presenting them to Discord users to prevent internal path,
+ * stack frame, environment variable, or token leakage.
+ */
+export function sanitizeUserErrorMessage(err: unknown): string {
+    if (!err) return "An unexpected error occurred.";
+    const rawMsg = err instanceof Error ? err.message : String(err);
+
+    // Detect internal system or secret leak signatures
+    if (
+        /(\/[a-zA-Z0-9_.-]+){3,}/.test(rawMsg) ||
+        /[a-zA-Z]:\\[a-zA-Z0-9_.\\]+/.test(rawMsg) ||
+        /at\s+[a-zA-Z0-9_$.]+\s+\(/i.test(rawMsg) ||
+        /token|secret|password|authorization|private_key/i.test(rawMsg)
+    ) {
+        return "An internal error occurred while processing this request.";
+    }
+
+    // Strip raw terminal/ANSI formatting
+    const clean = rawMsg.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").trim();
+    if (clean.length > 200) {
+        return clean.slice(0, 197) + "...";
+    }
+    return clean || "An unexpected error occurred.";
+}

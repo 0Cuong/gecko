@@ -11,6 +11,8 @@ import { StringDecoder } from "node:string_decoder";
 import got from "got";
 import { LRUCache } from "../utils/cache.js";
 import { Singleflight } from "./spotify.js";
+import { SecurityManager } from "../utils/security.js";
+import { downloadExecutable } from "../utils/ytdlp/index.js";
 
 const suffix = process.platform === "win32" ? ".exe" : process.platform === "darwin" ? "_macos" : "";
 const filename = `yt-dlp${suffix}`;
@@ -264,7 +266,6 @@ function getAutoCookiePath(): string | null {
 const FAST_GLOBAL_FLAGS = [
     "--ignore-config",
     "--no-warnings",
-    "--no-check-certificate",
     "--socket-timeout", "8",
     "--retries", "1",
     "--extractor-retries", "1"
@@ -281,8 +282,7 @@ const RECOVERY_GLOBAL_FLAGS = [
     "--socket-timeout", "15",
     "--retry-sleep", "fragment:0.5",
     "--retry-sleep", "extractor:1",
-    "--no-warnings",
-    "--no-check-certificate"
+    "--no-warnings"
 ];
 
 function injectNetworkingAndCookies(args: string[], url: string, opts: Record<string, any>) {
@@ -299,10 +299,11 @@ function injectNetworkingAndCookies(args: string[], url: string, opts: Record<st
     }
 
     if (!opts._ignoreCookies) {
+        const allowCookies = Boolean(opts.allowCookies ?? opts.allowBrowserCookies);
         const browserCookie = opts.cookiesFromBrowser || opts["cookies-from-browser"] || opts._usedBrowser;
         const profile = opts.browserProfile || opts["browser-profile"] || opts._usedProfile;
         
-        if (browserCookie) {
+        if (browserCookie && allowCookies) {
             args.push("--cookies-from-browser", profile ? `${browserCookie}:${profile}` : String(browserCookie));
         } else if (opts.cookies) {
             args.push("--cookies", String(opts.cookies));
@@ -443,35 +444,7 @@ export async function updateYtdlBinary(): Promise<void> {
 
     updatePromise = (async () => {
         try {
-            const relUrl = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
-            const response = await got(relUrl, { headers: { "User-Agent": "yt-dlp-wrapper" }, timeout: { request: 15000 } }).json<any>();
-            
-            const assetName = process.platform === "win32" ? "yt-dlp.exe" : process.platform === "darwin" ? "yt-dlp_macos" : "yt-dlp";
-            const asset = response?.assets?.find((a: any) => a.name === assetName);
-            if (!asset?.browser_download_url) throw new Error("Asset not found");
-
-            if (!existsSync(scriptsPath)) mkdirSync(scriptsPath, { recursive: true });
-
-            const tempPath = nodePath.resolve(scriptsPath, `${filename}.tmp.${process.pid}.${Date.now()}`);
-            await pipeline(got.stream(asset.browser_download_url), createWriteStream(tempPath));
-
-            if (process.platform !== "win32") chmodSync(tempPath, 0o755);
-
-            if (existsSync(exePath)) {
-                if (process.platform === "win32") {
-                    const oldPath = nodePath.resolve(scriptsPath, `${filename}.old.${Date.now()}`);
-                    try { renameSync(exePath, oldPath); } catch { try { unlinkSync(exePath); } catch {} }
-                } else {
-                    try { unlinkSync(exePath); } catch {}
-                }
-            }
-
-            try {
-                renameSync(tempPath, exePath);
-            } catch {
-                copyFileSync(tempPath, exePath);
-                try { unlinkSync(tempPath); } catch {}
-            }
+            await downloadExecutable();
             isExecutableEnsured = true;
         } catch (err) {
             throw new YTDPLError("Update failed", "UPDATE_FAILED", err as Error);
@@ -484,6 +457,9 @@ export async function updateYtdlBinary(): Promise<void> {
 }
 
 export async function runYtdl(url: string, options: Record<string, any> = {}, spawnOptions: Record<string, any> = {}): Promise<any> {
+    if (url && (url.startsWith("http://") || url.startsWith("https://") || url.includes("://"))) {
+        await SecurityManager.assertPublicHttpUrl(url);
+    }
     const maxStdoutSize = options.maxStdoutSize || 50 * 1024 * 1024;
     const processTimeout = options.timeout || 25_000;
 
@@ -576,8 +552,11 @@ async function runTikTokRecoveryPipeline(url: string, opts: Record<string, any>,
     delete runOpts.cookiesFromBrowser;
     delete runOpts["cookies-from-browser"];
 
+    const allowBrowserCookies = Boolean(opts.allowCookies ?? opts.allowBrowserCookies);
+
     for (let i = 0; i < RECOVERY_STEPS.length; i++) {
         const step = RECOVERY_STEPS[i];
+        if (step.browser !== "file" && !allowBrowserCookies) continue;
         if (step.browser === "file" && !opts.cookies && !getAutoCookiePath()) continue;
 
         runOpts._retryAttempt = i + 1;
@@ -655,7 +634,8 @@ export default async function ytdl(url: string, opts: Record<string, any> = {}, 
                 if (attempt >= maxRetries) break;
                 if (!["FORBIDDEN", "RATE_LIMIT", "LOGIN_REQUIRED", "EXTRACT_FAILED", "TIMEOUT", "NETWORK_ERROR"].includes(err.code)) break;
 
-                if (attempt === 0 && !opts.cookies && !opts.cookiesFromBrowser) {
+                const allowBrowserCookies = Boolean(opts.allowCookies ?? opts.allowBrowserCookies);
+                if (attempt === 0 && !opts.cookies && !opts.cookiesFromBrowser && allowBrowserCookies) {
                     const browsers = cachedWorkingBrowser ? [cachedWorkingBrowser, ...BROWSERS_FOR_COOKIES.filter(b => b !== cachedWorkingBrowser)] : BROWSERS_FOR_COOKIES;
                     for (let i = 0; i < browsers.length; i++) {
                         try {
@@ -764,6 +744,9 @@ export async function createAudioStream(
     url: string,
     options: Record<string, any> = {}
 ): Promise<AudioStreamResult> {
+    if (url && (url.startsWith("http://") || url.startsWith("https://") || url.includes("://"))) {
+        await SecurityManager.assertPublicHttpUrl(url);
+    }
     // 1. DIRECT STREAM CACHE LOOKUP (0ms Latency)
     if (!options.forceNoCache) {
         const cachedStream = directStreamUrlCache.get(url);

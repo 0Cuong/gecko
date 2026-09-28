@@ -1,4 +1,3 @@
-import { AudioPlayerStatus } from "@discordjs/voice";
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { SlashCommand } from "../client/types.js";
 import { embed } from "../utils/embeds.js";
@@ -39,31 +38,8 @@ export default {
             return;
         }
 
-        // Convert percentage level to linear ratio (100% -> 1.0)
-        const targetVolume = level > 2 ? level / 100 : level;
-        queue.volume = targetVolume;
-
-        const state = queue.player.state;
-        if (state.status !== AudioPlayerStatus.Idle) {
-            const resource = (state as any).resource as import("@discordjs/voice").AudioResource | undefined;
-
-            if (resource?.volume) {
-                // Apply linear multiplier directly to current active audio resource
-                if (typeof resource.volume.setVolume === "function") {
-                    resource.volume.setVolume(targetVolume);
-                } else {
-                    (resource.volume as any).volume = targetVolume;
-                }
-            } else {
-                await interaction.reply({
-                    embeds: [embed("error", "❌ Current audio stream does not support inline volume control.")],
-                    flags: MessageFlags.Ephemeral,
-                });
-                return;
-            }
-        }
-
-        const percentageDisplay = Math.round(targetVolume * 100);
+        const newVolume = queue.setVolume(level);
+        const percentageDisplay = Math.round(newVolume * 100);
         await interaction.reply({
             embeds: [embed("success", `🔊 Volume set to **${percentageDisplay}%**.`)]
         });

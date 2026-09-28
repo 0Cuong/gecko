@@ -13,8 +13,8 @@
         "build": "swc src -d dist --strip-leading-paths",
         "build:clean": "rimraf dist && swc src -d dist --strip-leading-paths",
         "typecheck": "tsc --noEmit",
-        "test": "pnpm run typecheck && pnpm run build && node tests/core.test.mjs && node tests/runtime.test.mjs",
-        "test:soak": "pnpm run build && node --expose-gc tests/soak.mjs",
+        "test": "npm run typecheck && npm run build && node tests/core.test.mjs && node tests/runtime.test.mjs && node tests/adversarial.test.mjs",
+        "test:soak": "npm run build && node --expose-gc tests/soak.mjs",
         "start": "node -r dotenv/config dist/index.js",
         "dev": "swc src -d dist --strip-leading-paths && node -r dotenv/config dist/index.js"
     },

@@ -132,14 +132,20 @@ function getDiscordStatusString(status: number): string {
     }
 }
 
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function isFatalError(err: unknown): boolean {
     if (!err) return false;
     const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
     return (
-        msg.includes("token") ||
-        msg.includes("disallowed intents") ||
         msg.includes("out of memory") ||
-        msg.includes("eaddrinuse") ||
         msg.includes("cannot find module")
     );
 }
@@ -225,6 +231,10 @@ async function loginWithRetry(
             const errMsg = err instanceof Error ? err.message : String(err);
             console.error(`[Gecko:Auth] Login attempt ${attempt} failed: ${errMsg}`);
 
+            if (errMsg.toLowerCase().includes("invalid token") || errMsg.toLowerCase().includes("disallowed intents")) {
+                throw new Error(errMsg);
+            }
+
             if (attempt === maxAttempts) {
                 throw new Error(`Exhausted all ${maxAttempts} login attempts. Fatal auth failure.`);
             }
@@ -260,15 +270,15 @@ async function main(): Promise<void> {
 
     console.info("[Gecko] Initializing production environment...");
 
-    if (!config || !config.token || typeof config.token !== "string" || config.token.trim() === "") {
-        console.error("[Gecko:Config] Fatal: DISCORD_TOKEN is missing or empty in config!");
-        process.exit(1);
+    const hasToken = Boolean(config?.token && typeof config.token === "string" && config.token.trim() !== "");
+    if (!hasToken) {
+        console.warn("[Gecko:Config] Warning: BOT_TOKEN is missing or empty. Bot login will be deferred until configured in Settings.");
     }
 
     const client = new GeckoClient();
     client.config = config;
 
-    const port = process.env.PORT || 3000;
+    const port = Number(process.env.PORT) || 3000;
     const server = http.createServer((req, res) => {
         try {
             if (req.url === "/metrics") {
@@ -315,7 +325,7 @@ async function main(): Promise<void> {
 
                 const isHealthy = isReady && wsStatus === "connected";
                 const healthPayload = {
-                    status: isHealthy ? "healthy" : "degraded",
+                    status: isHealthy ? "healthy" : (hasToken ? "connecting" : "awaiting_token"),
                     project: IDENTITY.projectId,
                     copyright: IDENTITY.copyright,
                     integrity: integrityStatusString,
@@ -329,8 +339,113 @@ async function main(): Promise<void> {
                     startupState: isReady ? "ready" : "starting"
                 };
 
-                res.writeHead(isHealthy ? 200 : 503, { "Content-Type": "application/json" });
+                res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify(healthPayload));
+                return;
+            }
+
+            if (req.url === "/" || req.url === "/index.html") {
+                const heapUsedMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+                const wsStatus = client.ws ? getDiscordStatusString(client.ws.status) : "disconnected";
+                const botUser = client.user?.tag || (isReady ? "Connected" : (hasToken ? `Connecting (${wsStatus})` : "Token Not Configured"));
+                const statusBadgeColor = isReady ? "#22c55e" : (hasToken ? "#eab308" : "#f97316");
+                const statusText = isReady ? "ONLINE" : (hasToken ? `STANDBY (${wsStatus})` : "AWAITING BOT_TOKEN");
+
+                const commandsList = Array.from(client.commands.values())
+                    .map(cmd => `<div style="padding:10px 14px;background:#1e293b;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:600;color:#38bdf8;font-family:monospace;font-size:14px;">/${escapeHtml(cmd.data.name)}</span>
+                        <span style="color:#94a3b8;font-size:13px;">${escapeHtml(cmd.data.description || "")}</span>
+                    </div>`).join("");
+
+                const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gecko Discord Music Bot</title>
+    <meta name="description" content="A minimal, fast, stable, and lightweight Discord music engine and bot with built-in health monitoring.">
+    <meta property="og:title" content="Gecko Discord Music Bot">
+    <meta property="og:description" content="A minimal, fast, stable, and lightweight Discord music engine and bot with built-in health monitoring.">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #0b0f19; color: #f8fafc; padding: 32px 16px; display: flex; justify-content: center; }
+        .container { max-width: 760px; width: 100%; }
+        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b; padding-bottom: 20px; margin-bottom: 24px; }
+        .title-group { display: flex; align-items: center; gap: 14px; }
+        .badge { padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; background: ${statusBadgeColor}; color: #000; }
+        .card { background: #131d2e; border: 1px solid #1e293b; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat-box { background: #0b0f19; padding: 14px; border-radius: 8px; border: 1px solid #1e293b; }
+        .stat-box .label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.05em; }
+        .stat-box .value { font-size: 18px; font-weight: 700; color: #38bdf8; margin-top: 6px; }
+        .alert { background: #451a03; border: 1px solid #b45309; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; color: #fef3c7; font-size: 14px; line-height: 1.6; }
+        .links { display: flex; gap: 16px; margin-top: 16px; }
+        .links a { color: #38bdf8; text-decoration: none; font-size: 13px; font-weight: 500; }
+        .links a:hover { text-decoration: underline; }
+        code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #facc15; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-group">
+                <span style="font-size:32px;">🦎</span>
+                <div>
+                    <h1 style="font-size:22px;font-weight:700;">Gecko Music Bot</h1>
+                    <p style="font-size:13px;color:#64748b;">${IDENTITY.copyright} &bull; v${IDENTITY.version}</p>
+                </div>
+            </div>
+            <span class="badge">${statusText}</span>
+        </div>
+
+        ${!hasToken ? `
+        <div class="alert">
+            <strong>Configuration Needed:</strong> Discord Bot Token is not set.<br/>
+            Open the <strong>Settings</strong> menu in AI Studio to set <code>BOT_TOKEN</code>.
+        </div>
+        ` : ""}
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="label">Discord Status</div>
+                <div class="value" style="font-size:14px;color:#f8fafc;">${escapeHtml(botUser)}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Connected Guilds</div>
+                <div class="value">${client.guilds.cache.size}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Active Queues</div>
+                <div class="value">${client.queues.size}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Process Uptime</div>
+                <div class="value">${Math.floor(process.uptime())}s</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Memory (Heap)</div>
+                <div class="value">${heapUsedMB} MB</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Commands</div>
+                <div class="value">${client.commands.size}</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="font-size:15px;font-weight:600;margin-bottom:14px;color:#e2e8f0;">Slash Commands (${client.commands.size})</h2>
+            ${commandsList || '<p style="color:#64748b;font-size:13px;">No slash commands loaded.</p>'}
+        </div>
+
+        <div class="links">
+            <a href="/healthz">Health Check API (/healthz) &rarr;</a>
+            <a href="/metrics">Prometheus Metrics (/metrics) &rarr;</a>
+        </div>
+    </div>
+</body>
+</html>`;
+                res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                res.end(html);
                 return;
             }
 
@@ -355,8 +470,8 @@ async function main(): Promise<void> {
         console.error(`[Gecko:HTTP] Server socket error: ${err.message}`);
     });
 
-    server.listen(port, () => {
-        console.info(`[Gecko:HTTP] Web server listening on port ${port} for keep-alive & health checks.`);
+    server.listen(port, "0.0.0.0", () => {
+        console.info(`[Gecko:HTTP] Web server listening on http://0.0.0.0:${port} for keep-alive & health checks.`);
     });
 
     memoryCheckInterval = startMemoryProtection(600);
@@ -492,7 +607,17 @@ async function main(): Promise<void> {
     process.on("SIGINT", () => void shutdown(0));
     process.on("SIGTERM", () => void shutdown(0));
 
-    await loginWithRetry(client, config.token, 5);
+    if (hasToken && config.token) {
+        try {
+            await loginWithRetry(client, config.token, 3);
+        } catch (authErr: unknown) {
+            const msg = authErr instanceof Error ? authErr.message : String(authErr);
+            console.warn(`[Gecko:Auth] Discord authentication could not be completed: ${msg}`);
+            console.info("[Gecko:HTTP] Web server remains active at http://0.0.0.0:3000 to serve dashboard and health checks.");
+        }
+    } else {
+        console.info("[Gecko:Auth] BOT_TOKEN not configured. Web server is running at http://0.0.0.0:3000.");
+    }
 }
 
 main().catch((err: unknown) => {

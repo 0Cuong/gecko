@@ -5,7 +5,7 @@ import { embed } from "../utils/embeds.js";
 export default {
     data: new SlashCommandBuilder()
         .setName("autoplay")
-        .setDescription("Toggle autoplay — automatically queues related songs when the queue ends."),
+        .setDescription("Toggle autoplay - automatically queues related songs when the queue ends."),
 
     async execute(interaction, client) {
         const queue = client.queues.get(interaction.guildId!);

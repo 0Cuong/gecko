@@ -40,6 +40,7 @@ const controllerSource = fs.readFileSync(controllerFile, 'utf8');
 assert.ok(controllerSource.includes('VOICE_RECONNECT_ATTEMPTS'), 'Controller should own bounded voice reconnection');
 assert.ok(controllerSource.includes('RetryManager'), 'Controller should use bounded retry policy');
 assert.ok(controllerSource.includes('destroy(): void'), 'Controller must expose deterministic teardown');
+assert.ok(controllerSource.includes('volumeChange'), 'Controller should listen to volume changes');
 const sessionFile = path.join(root, 'src', 'player', 'VoiceSessionManager.ts');
 const sessionSource = fs.readFileSync(sessionFile, 'utf8');
 assert.ok(sessionSource.indexOf('queue.destroy();') < sessionSource.indexOf('destroy-session-orphan-connection'), '/stop must tear down the queue before an orphaned voice connection');

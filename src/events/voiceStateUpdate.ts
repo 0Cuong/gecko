@@ -29,13 +29,15 @@ export default function voiceStateUpdate(
         }
     }
 
-    const voiceChannelId = connection.joinConfig.channelId ?? newState.channelId;
+    const voiceChannelId = (botId && userId === botId && newState.channelId)
+        ? newState.channelId
+        : (newState.guild.members.me?.voice?.channelId ?? connection.joinConfig.channelId ?? newState.channelId);
     if (!voiceChannelId) return;
 
     const oldChannelId = oldState.channelId;
     const newChannelId = newState.channelId;
 
-    if (oldChannelId !== voiceChannelId && newChannelId !== voiceChannelId) return;
+    if (oldChannelId !== voiceChannelId && newChannelId !== voiceChannelId && oldChannelId !== connection.joinConfig.channelId) return;
     if (oldChannelId === newChannelId) return;
 
     const channel = newState.guild.channels.cache.get(voiceChannelId);

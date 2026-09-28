@@ -17,7 +17,7 @@ function positiveInteger(key: string, fallback: number, minimum: number, maximum
 }
 
 export const config = {
-    token: required("BOT_TOKEN"),
+    token: optional("BOT_TOKEN", ""),
     devGuildId: optional("DEV_GUILD_ID", ""),
     defaultVolume: positiveInteger("DEFAULT_VOLUME", 100, 1, 200),
     idleTimeout: positiveInteger("IDLE_TIMEOUT", 300, 30, 86_400) * 1_000,

@@ -49,4 +49,59 @@ assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, tru
 assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, true);
 assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, false, 'FFmpeg restarts must be bounded');
 
+// Volume normalization and event verification
+const volQueue = new GuildQueue('vol-channel', 1.0);
+let capturedVol = 0;
+volQueue.on('volumeChange', (v) => { capturedVol = v; });
+assert.equal(volQueue.setVolume(50), 0.5, '50% volume should normalize to 0.5');
+assert.equal(capturedVol, 0.5, 'volumeChange event should emit normalized volume');
+assert.equal(volQueue.formatVolumeDisplay(), '50%');
+assert.equal(volQueue.setVolume(250), 2.0, 'exceeding max volume should clamp to 2.0');
+assert.equal(volQueue.setVolume(-10), 0.01, 'negative volume should clamp to 0.01');
+volQueue.destroy();
+
+// Previous track history restoration tests
+const prevQueue = new GuildQueue('prev-channel', 1.0);
+prevQueue.add(song('prev-1'));
+prevQueue.add(song('prev-2'));
+const s1 = prevQueue.advance();
+assert.equal(s1?.id, 'prev-1');
+assert.equal(prevQueue.history.length, 1);
+assert.equal(prevQueue.history[0].id, 'prev-1');
+assert.equal(prevQueue.current()?.id, 'prev-2');
+
+// Call previous when playing track 2: track 1 is restored to position 1 and skipped to
+let skipCalled = false;
+prevQueue.attachController({
+  destroy: () => {},
+  skip: () => { skipCalled = true; prevQueue.advance(); },
+  stop: () => {},
+});
+const restored = prevQueue.previous();
+assert.equal(restored?.id, 'prev-1');
+assert.equal(prevQueue.history.length, 0);
+
+// Test previous when queue has finished / empty
+const emptyPrevQueue = new GuildQueue('empty-prev', 1.0);
+emptyPrevQueue.add(song('first'));
+emptyPrevQueue.advance(); // moved to history, queue empty
+assert.equal(emptyPrevQueue.songs.length, 0);
+assert.equal(emptyPrevQueue.history.length, 1);
+const replayed = emptyPrevQueue.previous();
+assert.equal(replayed?.id, 'first');
+assert.equal(emptyPrevQueue.songs.length, 1);
+assert.equal(emptyPrevQueue.current()?.id, 'first');
+emptyPrevQueue.destroy();
+
+// Stop method tests
+let stopCalled = false;
+const stopQueue = new GuildQueue('stop-channel', 1.0);
+stopQueue.attachController({
+  destroy: () => {},
+  stop: () => { stopCalled = true; },
+});
+stopQueue.stop();
+assert.equal(stopCalled, true, 'queue.stop must delegate to attached controller.stop');
+stopQueue.destroy();
+
 console.log('Runtime queue and retry checks passed');

@@ -181,7 +181,8 @@ export default {
                     return;
                 }
 
-                const wasEmpty = queue.songs.length === 0 && !queue.isPlaying();
+                const shouldStartPlayback = !queue.isPlaying();
+                const wasEmpty = queue.songs.length === 0;
                 const acceptedSongs = queue.addMany([song]);
 
                 if (acceptedSongs.length === 0) {
@@ -204,13 +205,13 @@ export default {
                     responseEmbed.setAuthor({ name: "Added to Queue", iconURL: interaction.user.displayAvatarURL() })
                                  .addFields(
                                      { name: "Duration", value: `\`${durStr}\``, inline: true },
-                                     { name: "Position", value: `\`#${queue.songs.length}\``, inline: true }
+                                     { name: "Position in Queue", value: `\`#${queue.songs.length - 1}\``, inline: true }
                                  );
                 }
 
                 await safeEditReply(interaction, { embeds: [responseEmbed], components: [] });
 
-                if (wasEmpty) {
+                if (shouldStartPlayback) {
                     queue.suppressNowPlaying = true;
                     const targetQueue = queue;
                     setImmediate(() => {

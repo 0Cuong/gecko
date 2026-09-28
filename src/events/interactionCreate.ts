@@ -44,8 +44,24 @@ export default async function interactionCreate(
     }
 }
 
+function sanitizeErrorMessage(err: unknown): string {
+    if (!err) return "An unexpected error occurred.";
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message) return "An unexpected error occurred.";
+
+    // Guard against leaking internal file paths, syscall codes, stack traces, credentials, or internal IPs
+    const containsSystemLeak =
+        /([\\/][a-zA-Z0-9_.-]+){2,}|ENOENT|EACCES|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EADDRINUSE|at\s+[a-zA-Z0-9_.]+\s+\(|127\.0\.0\.1|0\.0\.0\.0|localhost|token|secret|password|api[_-]?key/i.test(message);
+
+    if (containsSystemLeak) {
+        return "An unexpected internal error occurred while executing this command.";
+    }
+
+    return message.length > 250 ? `${message.slice(0, 247)}...` : message;
+}
+
 async function handleCommandError(interaction: ChatInputCommandInteraction, err: unknown): Promise<void> {
-    const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
+    const msg = sanitizeErrorMessage(err);
 
     if (interaction.replied || interaction.deferred) {
         try {

@@ -17,7 +17,8 @@ const MAX_SAFE_VOLUME = 2.0;
 
 export interface QueuePlaybackController {
     destroy(): void;
-    skip?(): void;
+    skip?(advance?: boolean): void;
+    stop?(): void;
 }
 
 export interface SendableTextChannel {
@@ -287,6 +288,16 @@ export class GuildQueue extends EventEmitter {
         this.setLifecycle("CONNECTING");
     }
 
+    public clearAll(): void {
+        const removed = this.songs.splice(0);
+        for (let i = 0; i < removed.length; i++) {
+            this.unregisterSong(removed[i]);
+        }
+        this.history.length = 0;
+        this.songSet.clear();
+        this.currentSong = null;
+    }
+
     public clearQueue(): void {
         if (this.songs.length > 1) {
             const removed = this.songs.splice(1);
@@ -344,14 +355,41 @@ export class GuildQueue extends EventEmitter {
         }
     }
 
+    public previous(): Song | null {
+        if (this.isDestroyed || this.history.length === 0) return null;
+        const prevSong = this.history.pop()!;
+        this.registerSong(prevSong);
+
+        this.songs.unshift(prevSong);
+        this.currentSong = prevSong;
+
+        if (this.loopMode === "track") {
+            this.skipTrackLoop = true;
+        }
+
+        if (this.isPlaying()) {
+            if (this.controller && typeof this.controller.skip === "function") {
+                this.controller.skip(false);
+            } else {
+                this.player.stop(true);
+            }
+        } else {
+            if (this.controller && typeof (this.controller as any).ensurePlayback === "function") {
+                void (this.controller as any).ensurePlayback();
+            }
+        }
+        return prevSong;
+    }
+
     public stop(): void {
         if (this.isDestroyed) return;
-        this.songs.length = 0;
-        this.history.length = 0;
-        this.songSet.clear();
-        this.currentSong = null;
-        void this.cleanupNowPlayingMessage();
-        this.player.stop(true);
+        if (this.controller && typeof this.controller.stop === "function") {
+            this.controller.stop();
+        } else {
+            this.clearAll();
+            void this.cleanupNowPlayingMessage();
+            this.player.stop(true);
+        }
     }
 
     public destroy(): void {

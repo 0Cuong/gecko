@@ -4,7 +4,7 @@ import type { SlashCommand } from "../client/types.js";
 export default {
     data: new SlashCommandBuilder()
         .setName("help")
-        .setDescription("Hiển thị danh sách tất cả các lệnh hỗ trợ."),
+        .setDescription("Display list of all supported commands."),
 
     async execute(interaction: ChatInputCommandInteraction) {
         try {
@@ -12,52 +12,53 @@ export default {
 
             const helpEmbed = new EmbedBuilder()
                 .setColor(0x10b981) // Emerald Green
-                .setTitle("Gecko Music")
-                .setDescription("Trình phát nhạc cho Discord.")
+                .setTitle("🦎 Gecko Music Bot")
+                .setDescription("Minimal, fast, and stable Discord music engine.")
                 .setImage(bannerUrl)
                 .addFields(
                     {
-                        name: "❯ Trình phát",
+                        name: "❯ Playback",
                         value: [
-                            "`/play` — Phát nhạc từ YouTube, SoundCloud hoặc liên kết trực tiếp",
-                            "`/pause` · `/resume` — Tạm dừng hoặc tiếp tục phát nhạc",
-                            "`/stop` — Dừng phát nhạc và xóa sạch hàng chờ",
-                            "`/skip` · `/previous` — Chuyển tiếp hoặc quay lại bài hát trước đó",
-                            "`/volume` — Điều chỉnh âm lượng đầu ra (1-100)"
+                            "`/play` - Play audio from YouTube, SoundCloud, or direct URL",
+                            "`/pause` · `/resume` - Pause or resume current playback",
+                            "`/stop` - Stop playback, clear the queue, and leave voice channel",
+                            "`/skip` · `/previous` - Skip to next song or replay previous song",
+                            "`/volume` - Adjust audio output volume (1-200%)"
                         ].join("\n"),
                         inline: false
                     },
                     {
-                        name: "❯ Hàng chờ",
+                        name: "❯ Queue Management",
                         value: [
-                            "`/queue` — Hiển thị danh sách các bài hát đang chờ phát",
-                            "`/nowplaying` — Xem thông tin chi tiết bài hát đang phát",
-                            "`/search` — Tìm kiếm và chọn bài phát theo yêu cầu",
-                            "`/remove` — Xóa bài hát khỏi hàng chờ theo vị trí",                            
-                            "`/clear` — Làm trống toàn bộ hàng chờ hiện tại",
-                            "`/move` — Chuyển một bài hát đến vị trí khác trong hàng chờ"
+                            "`/queue` - View and interactively manage upcoming queue",
+                            "`/nowplaying` - Display details and progress of current track",
+                            "`/search` - Search tracks on YouTube/SoundCloud with selection menu",
+                            "`/remove` - Remove a track from queue by position",
+                            "`/clear` - Clear all upcoming songs from queue",
+                            "`/move` - Move a song to a different position in queue"
                         ].join("\n"),
                         inline: false
                     },
                     {
-                        name: "❯ Chế độ phát",
+                        name: "❯ Modes & Settings",
                         value: [
-                            "`/loop` — Thiết lập chế độ lặp (tắt, bài hát, hàng chờ,loop 2 lần để tắt/mở",
-                            "`/shuffle` — Bật hoặc tắt chế độ phát ngẫu nhiên",
-                            "`/autoplay` — Tự động phát nhạc liên quan khi hết hàng chờ"
+                            "`/loop` - Toggle repeat mode (off, track, queue)",
+                            "`/shuffle` - Toggle shuffle mode for upcoming tracks",
+                            "`/autoplay` - Automatically play related tracks when queue ends"
                         ].join("\n"),
                         inline: false
                     },
                     {
-                        name: "❯ Kênh thoại",
+                        name: "❯ Voice & Diagnostics",
                         value: [
-                            "`/join` — Tham gia kênh thoại hiện tại của bạn",
-                            "`/leave` — Rời khỏi kênh thoại và dừng phát nhạc"
+                            "`/join` - Join your current voice channel",
+                            "`/leave` - Leave voice channel and stop playback",
+                            "`/system` - View live engine health, memory, and diagnostics"
                         ].join("\n"),
                         inline: false
                     },
                     {
-                        name: "❯ Liên Hệ (nếu có vấn đề)",
+                        name: "❯ Credits & Support",
                         value: [
                             "**MCuong** (<@840850234560872468>)",
                             "**Gecko** (<@922429354116546610>)",
@@ -65,7 +66,7 @@ export default {
                         inline: false
                     }
                 )
-                .setFooter({ text: "Gecko Music • MCuong & Gecko" });
+                .setFooter({ text: "Gecko Music • Fast • Stable • Lightweight" });
 
             if (interaction.replied || interaction.deferred) {
                 await interaction.followUp({ embeds: [helpEmbed], flags: MessageFlags.Ephemeral });
@@ -73,7 +74,7 @@ export default {
                 await interaction.reply({ embeds: [helpEmbed], flags: MessageFlags.Ephemeral });
             }
         } catch (error) {
-            console.error("Lỗi xảy ra khi xử lý lệnh help:", error);
+            console.error("[Gecko:Help] Error executing help command:", error);
         }
     },
 } satisfies SlashCommand;

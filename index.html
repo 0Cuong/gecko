@@ -1,0 +1,3017 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gecko Discord Music Bot</title>
+<meta name="description" content="Hệ thống và bot phát nhạc Discord tối giản, tốc độ cao, ổn định với công cụ giám sát sức khỏe tích hợp.">
+<meta name="author" content="0Cuong">
+<meta name="theme-color" content="#06151a">
+
+<!-- Open Graph / Social Metadata -->
+<meta property="og:title" content="Gecko Discord Music Bot">
+<meta property="og:description" content="Hệ thống và bot phát nhạc Discord tối giản, tốc độ cao, ổn định với công cụ giám sát sức khỏe tích hợp.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://github.com/0Cuong">
+<meta property="og:site_name" content="Gecko Music Bot">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Gecko Discord Music Bot">
+<meta name="twitter:description" content="Hệ thống và bot phát nhạc Discord tối giản, tốc độ cao, ổn định với công cụ giám sát sức khỏe tích hợp.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Hanken+Grotesk:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: #040e12;
+  --bg-dark: #06151a;
+  --bg-dark-trans: rgba(6, 21, 26, 0.88);
+  --fg-dark: #e8efe6;
+  --fg-muted: #859a96;
+  --fg-dim: rgba(232, 239, 230, 0.28);
+  --border-dark: rgba(232, 239, 230, 0.12);
+  --border-dark-hover: rgba(242, 207, 122, 0.4);
+  
+  --bg-light: #e8efe6;
+  --fg-light: #06151a;
+  --fg-light-muted: #4e6361;
+  --border-light: rgba(6, 21, 26, 0.15);
+  
+  --gold: #f2cf7a;
+  --gold-glow: rgba(242, 207, 122, 0.35);
+  --gold-dark: #8c6a26;
+  --cyan: #52c2ba;
+  --cyan-glow: rgba(82, 194, 186, 0.25);
+  
+  --font-serif: 'Newsreader', 'Playfair Display', Georgia, serif;
+  --font-sans: 'Hanken Grotesk', 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  
+  --pad: clamp(1.25rem, 4.5vw, 4.5rem);
+  --pad-sm: clamp(1rem, 3vw, 2.2rem);
+  --radius-pill: 9999px;
+  --radius-card: 16px;
+  
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--bg-dark);
+  color: var(--fg-dark);
+  color-scheme: dark;
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+html.is-loading {
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--fg-dark);
+  font: 400 1rem/1.6 var(--font-sans);
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* Procedural micro-grain overlay */
+#noise {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 800;
+  opacity: 0.038;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1.5rem;
+  top: -4.5rem;
+  z-index: 999;
+  background: var(--gold);
+  color: var(--bg-dark);
+  padding: 0.6rem 1.2rem;
+  font: 500 0.85rem var(--font-sans);
+  border-radius: var(--radius-pill);
+  transition: top 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.skip-link:focus {
+  top: 1.5rem;
+}
+
+/* Preloader / Calibration Sequence */
+#pre {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg-deep);
+  color: var(--fg-dark);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--pad);
+}
+
+.pre-hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-dark);
+  padding-bottom: 1rem;
+}
+
+.pre-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  margin-right: 0.6rem;
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.pre-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.8rem;
+  text-align: center;
+  margin: auto 0;
+}
+
+.pre-reticle-box {
+  position: relative;
+  width: clamp(120px, 18vw, 190px);
+  aspect-ratio: 1;
+}
+
+.pre-reticle-box svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pre-reticle-slit {
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  left: 50%;
+  width: 2px;
+  background: var(--gold);
+  transform: translateX(-50%);
+  box-shadow: 0 0 16px var(--gold);
+  animation: slit-breathe 2s ease-in-out infinite;
+}
+
+@keyframes slit-breathe {
+  0%, 100% { transform: translateX(-50%) scaleX(0.8); opacity: 0.7; }
+  50% { transform: translateX(-50%) scaleX(2.5); opacity: 1; box-shadow: 0 0 28px var(--gold); }
+}
+
+.pre-hud-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-top: 1px solid var(--border-dark);
+  padding-top: 1rem;
+  gap: 2rem;
+}
+
+#pre-pct {
+  font: 400 clamp(4.5rem, 16vw, 12rem)/0.8 var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  letter-spacing: -0.04em;
+}
+
+/* Custom Precision Cursor */
+#cur-dot, #cur-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 950;
+  display: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+
+#cur-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  mix-blend-mode: difference;
+}
+
+#cur-ring {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  mix-blend-mode: difference;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.3s, height 0.3s, border-color 0.3s;
+}
+
+#cur-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (hover: none) or (pointer: coarse) {
+  #cur-dot, #cur-ring {
+    display: none !important;
+  }
+}
+
+/* Global Progress Bar */
+#pg-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--gold));
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  z-index: 700;
+}
+
+/* Fixed HUD Header */
+#nav {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 1.25rem) var(--pad) 1.25rem;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: linear-gradient(180deg, rgba(6, 21, 26, 0.88) 0%, rgba(6, 21, 26, 0.45) 75%, transparent 100%);
+  border-bottom: 1px solid rgba(232, 239, 230, 0.08);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.nav-brand .logo-monogram {
+  font: italic 400 1.95rem/1 var(--font-serif);
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.nav-brand .logo-monogram span {
+  color: var(--gold);
+}
+
+.nav-by {
+  font-size: 0.68rem;
+  color: var(--fg-muted);
+  opacity: 0.65;
+  transition: opacity 0.3s;
+}
+
+.nav-brand:hover .nav-by {
+  opacity: 1;
+  color: var(--gold);
+}
+
+.nav-chapter-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 1.15rem;
+  border-radius: var(--radius-pill);
+  background: rgba(232, 239, 230, 0.05);
+  border: 1px solid var(--border-dark);
+}
+
+.nav-ch-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 1.8rem;
+}
+
+.nav-menu a {
+  position: relative;
+  font: 500 0.8rem var(--font-sans);
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  transition: color 0.3s;
+}
+
+.nav-menu a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 100%;
+  height: 1px;
+  background: var(--gold);
+  transform: scaleX(0);
+  transform-origin: 100% 50%;
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nav-menu a:hover {
+  color: var(--fg-dark);
+}
+
+.nav-menu a:hover::after {
+  transform: scaleX(1);
+  transform-origin: 0 50%;
+}
+
+.nav-clock {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(82, 194, 186, 0.25);
+  background: rgba(82, 194, 186, 0.05);
+}
+
+@media (max-width: 820px) {
+  .nav-menu, .nav-clock, .nav-by {
+    display: none;
+  }
+}
+
+/* SECTION 01: HERO (APERTURE) */
+.hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(6.5rem, 14vh, 9rem) var(--pad) clamp(2rem, 5vh, 3.5rem);
+  overflow: hidden;
+  background: radial-gradient(65% 75% at 50% 45%, rgba(242, 207, 122, 0.12), transparent 70%), var(--bg-dark);
+  perspective: 1200px;
+}
+
+#gl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.slit-fallback {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  bottom: 8%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(transparent, #ffffff 40%, var(--gold) 50%, #ffffff 60%, transparent);
+  box-shadow: 0 0 80px 24px var(--gold-glow);
+  opacity: 0;
+  pointer-events: none;
+}
+.nogl .slit-fallback {
+  opacity: 1;
+}
+
+.hero > :not(#gl, .slit-fallback) {
+  position: relative;
+  z-index: 2;
+}
+
+.hero-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--fg-muted);
+  white-space: normal;
+}
+
+#h1 {
+  font: 400 clamp(3.8rem, 19.5vw, 22rem)/0.82 var(--font-serif);
+  letter-spacing: -0.04em;
+  color: #ffffff;
+  mix-blend-mode: difference;
+  margin: auto 0;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  will-change: transform, clip-path;
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+  -webkit-clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+}
+
+.c-wrap {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding: 0.08em 0.02em 0.12em;
+  margin: -0.08em -0.02em -0.12em;
+}
+
+.c-inner {
+  display: block;
+  transform-origin: 50% 100%;
+  will-change: transform, opacity, filter;
+}
+
+#h1 .c-wrap:nth-child(n+5) {
+  font-style: italic;
+  color: var(--gold);
+}
+
+/* Kinematic Text Mask Container System */
+.mask-wrap {
+  display: block;
+  overflow: hidden;
+  position: relative;
+  white-space: normal;
+}
+
+.mask-wrap.inline {
+  display: inline-block;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.mask-inner {
+  display: block;
+  transform-origin: 0% 100%;
+  will-change: transform, opacity;
+  white-space: normal;
+}
+
+.hero-lead-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.hero-lead {
+  font: italic 400 clamp(1.25rem, 2.2vw, 1.85rem)/1.2 var(--font-serif);
+  max-width: 32ch;
+  color: var(--fg-dark);
+  opacity: 0.95;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.hero-lead-line,
+.hero-prologue-line {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.hero-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 0.84rem;
+  color: var(--fg-muted);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.status-badge.standby {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #facc15;
+}
+
+.status-badge.awaiting {
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #fb923c;
+}
+
+.status-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.hero-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  border-top: 1px solid var(--border-dark);
+  padding-top: 1.5rem;
+}
+
+.hero-prologue {
+  max-width: 42ch;
+  font-size: 0.92rem;
+  color: var(--fg-muted);
+  line-height: 1.6;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.hero-scroll-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--fg-dark);
+  padding: 0.5rem;
+}
+
+.hero-scroll-line {
+  position: relative;
+  width: 1px;
+  height: 3.8rem;
+  background: rgba(232, 239, 230, 0.2);
+  overflow: hidden;
+}
+
+.hero-scroll-line i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, var(--gold), transparent);
+  animation: scroll-indicator 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes scroll-indicator {
+  0% { transform: translateY(-100%); }
+  50% { transform: translateY(0%); }
+  100% { transform: translateY(100%); }
+}
+
+/* Alert banner for unconfigured token */
+.token-alert-banner {
+  background: rgba(69, 26, 3, 0.7);
+  border: 1px solid #b45309;
+  border-radius: var(--radius-card);
+  padding: 1.1rem 1.4rem;
+  margin-top: 1rem;
+  color: #fef3c7;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  backdrop-filter: blur(8px);
+}
+.token-alert-banner strong {
+  color: var(--gold);
+}
+
+/* SECTION 02: DISCOVERY (ARCHITECTURE & SPECTRUM) */
+.c2 {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: clamp(6.5rem, 16vh, 12rem) var(--pad);
+  border-top: 1px solid var(--border-dark);
+  background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-deep) 100%);
+}
+
+.c2-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(3rem, 7vw, 7rem);
+  width: 100%;
+  max-width: 1540px;
+  margin: 0 auto;
+}
+
+@media (min-width: 980px) {
+  .c2-grid {
+    grid-template-columns: 32rem 1fr;
+    align-items: center;
+  }
+}
+
+.c2-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.c2-badge-box {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.c2-title {
+  font: italic 400 clamp(2.4rem, 4.5vw, 3.8rem)/1.05 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+
+.c2-desc {
+  color: var(--fg-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  max-width: 40ch;
+}
+
+/* Interactive Audio Spectrum Instrument Widget */
+.refractor-widget {
+  background: rgba(232, 239, 230, 0.03);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-card);
+  padding: 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  backdrop-filter: blur(10px);
+}
+
+.refractor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.prism-view-box {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  background: rgba(4, 14, 18, 0.7);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(232, 239, 230, 0.08);
+}
+
+.prism-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+}
+
+.wave-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #52c2ba 0%, #38bdf8 30%, #f2cf7a 70%, #f97316 100%);
+  outline: none;
+  cursor: pointer;
+}
+
+.wave-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--gold);
+  cursor: grab;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.wave-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--gold);
+  cursor: grab;
+}
+
+.refractor-readouts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+  border-top: 1px solid var(--border-dark);
+  padding-top: 1rem;
+}
+
+.readout-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.readout-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+}
+
+.readout-val {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--fg-dark);
+  font-weight: 500;
+}
+
+/* Lede Text Column */
+.c2-right {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+#lede {
+  font: 400 clamp(1.85rem, 4.2vw, 4.4rem)/1.15 var(--font-serif);
+  letter-spacing: -0.02em;
+  color: var(--fg-dark);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  word-spacing: normal;
+}
+
+.w-span {
+  display: inline-block;
+  white-space: normal;
+  will-change: opacity, filter;
+}
+
+.c2-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1.5rem;
+  border-top: 1px solid var(--border-dark);
+  padding-top: 2rem;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.metric-num {
+  font: 400 clamp(2.2rem, 3.8vw, 3.4rem)/0.9 var(--font-serif);
+  color: var(--gold);
+  letter-spacing: -0.02em;
+}
+
+.metric-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--fg-dark);
+  font-weight: 500;
+}
+
+.metric-desc {
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+
+/* SECTION 03: IMMERSION (FOUR CORE ENGINE PILLARS) */
+.c3 {
+  position: relative;
+  padding: clamp(5rem, 14vh, 9rem) var(--pad);
+  border-top: 1px solid var(--border-dark);
+}
+
+.c3-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 3.5rem;
+}
+
+.c3-rail {
+  display: none;
+  flex: 1;
+  height: 1px;
+  background: var(--border-dark);
+  position: relative;
+}
+
+#c3-rail-fill {
+  display: block;
+  height: 1px;
+  background: linear-gradient(90deg, var(--cyan), var(--gold));
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.c3-counter-text {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+}
+
+.c3-track {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4.5rem;
+}
+
+.c3-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  align-items: center;
+  border-bottom: 1px solid var(--border-dark);
+  padding-bottom: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  .c3-card {
+    grid-template-columns: 16rem 1fr;
+    gap: 3.5rem;
+  }
+}
+
+.card-art-box {
+  position: relative;
+  width: 100%;
+  max-width: 22rem;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(242, 207, 122, 0.08), transparent 70%);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-art-inner {
+  width: 80%;
+  height: 80%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Card 1: Dispatch */
+.art-dispatch {
+  border-radius: 50%;
+  border: 1px solid rgba(242, 207, 122, 0.35);
+  box-shadow: 0 0 35px rgba(242, 207, 122, 0.2);
+}
+.art-dispatch svg {
+  width: 100%;
+  height: 100%;
+  animation: rotate-iris 16s linear infinite;
+}
+@keyframes rotate-iris {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Card 2: Resolver */
+.art-resolver {
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 10px, rgba(82, 194, 186, 0.25) 10px 11px),
+              repeating-radial-gradient(circle at 60% 40%, transparent 0 12px, rgba(242, 207, 122, 0.22) 12px 13px);
+  box-shadow: 0 0 30px rgba(82, 194, 186, 0.15);
+}
+
+/* Card 3: Pipeline */
+.art-pipeline {
+  background: repeating-linear-gradient(125deg, rgba(232, 239, 230, 0.2) 0 1px, transparent 1px 18px);
+  -webkit-mask-image: radial-gradient(circle, #000 40%, transparent 75%);
+  mask-image: radial-gradient(circle, #000 40%, transparent 75%);
+}
+.art-pipeline::after {
+  content: 'λ';
+  font: italic 400 5.5rem var(--font-serif);
+  color: var(--gold);
+  opacity: 0.8;
+}
+
+/* Card 4: State Machine */
+.art-statemachine {
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #ffffff 0%, var(--gold) 20%, transparent 68%);
+  box-shadow: 0 0 60px 16px var(--gold-glow);
+  animation: pulse-singularity 3.2s ease-in-out infinite alternate;
+}
+@keyframes pulse-singularity {
+  0% { transform: scale(0.85); box-shadow: 0 0 40px 10px var(--gold-glow); }
+  100% { transform: scale(1.08); box-shadow: 0 0 75px 24px var(--gold-glow); }
+}
+
+.c3-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.c3-card-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan);
+}
+
+.c3-card-title {
+  font: italic 400 clamp(2.6rem, 5.5vw, 5.2rem)/0.95 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+
+.c3-card-p {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--fg-dark);
+  opacity: 0.82;
+  max-width: 32ch;
+}
+
+.c3-card-footer {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+}
+
+/* Desktop Horizontal Pinned State */
+@media (min-width: 900px) {
+  #c3.is-pinned {
+    height: 100svh;
+    overflow: hidden;
+    padding: 0;
+  }
+  #c3.is-pinned .c3-header-bar {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 5.5rem);
+    left: var(--pad);
+    right: var(--pad);
+    margin: 0;
+    z-index: 10;
+  }
+  #c3.is-pinned .c3-rail {
+    display: block;
+  }
+  #c3.is-pinned .c3-track {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    width: max-content;
+    padding: 0 var(--pad);
+    gap: 0;
+  }
+  #c3.is-pinned .c3-card {
+    flex: 0 0 min(84vw, 64rem);
+    grid-template-columns: 1fr 1fr;
+    gap: 5rem;
+    align-items: center;
+    border-bottom: none;
+    padding: 0 clamp(3rem, 8vw, 10rem) 0 0;
+    margin: 0;
+  }
+  #c3.is-pinned .c3-card:nth-child(even) .card-art-box {
+    order: 2;
+  }
+  #c3.is-pinned .card-art-box {
+    max-width: 30rem;
+  }
+}
+
+/* SECTION 04: TRANSFORMATION (ACOUSTIC INVERSION) */
+.c4 {
+  position: relative;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 6rem var(--pad);
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+.trans-mask {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-light);
+  clip-path: circle(0% at 50% 50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.trans-content {
+  position: relative;
+  z-index: 2;
+  mix-blend-mode: difference;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  max-width: 90vw;
+}
+
+.trans-title {
+  font: 400 clamp(3.6rem, 14vw, 16.5rem)/0.86 var(--font-serif);
+  letter-spacing: -0.035em;
+  text-transform: uppercase;
+}
+
+.trans-title em {
+  font-style: italic;
+  display: block;
+}
+
+.trans-sub {
+  font: 500 0.95rem var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* SECTION 05: RESOLUTION (COMMANDS, SPECS & TELEMETRY) */
+.c5 {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 5rem;
+  padding: clamp(6rem, 14vh, 9rem) var(--pad) clamp(2rem, 4vh, 3.5rem);
+  background: var(--bg-light);
+  color: var(--fg-light);
+}
+
+.huge-title {
+  font: 400 clamp(4.2rem, 18vw, 22rem)/0.82 var(--font-serif);
+  letter-spacing: -0.04em;
+  color: var(--fg-light);
+}
+
+.huge-title em {
+  font-style: italic;
+  color: var(--gold-dark);
+}
+
+.c5-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(3rem, 6vw, 6rem);
+  align-items: start;
+}
+
+@media (min-width: 1080px) {
+  .c5-grid {
+    grid-template-columns: 1fr 1.35fr;
+  }
+}
+
+.c5-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2.8rem;
+}
+
+.c5-manifesto {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 44ch;
+}
+
+.c5-manifesto h3 {
+  font: italic 400 clamp(1.8rem, 3.2vw, 2.6rem)/1.1 var(--font-serif);
+  letter-spacing: -0.02em;
+}
+
+.c5-manifesto p {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--fg-light-muted);
+}
+
+/* Specs Table */
+.specs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+.specs-table tr {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.specs-table td {
+  padding: 0.75rem 0;
+}
+
+.specs-table td:last-child {
+  text-align: right;
+  font-weight: 500;
+  color: var(--fg-light);
+}
+
+.specs-table td:first-child {
+  color: var(--fg-light-muted);
+}
+
+/* Live Telemetry Card Grid */
+.telemetry-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.telemetry-card {
+  background: rgba(6, 21, 26, 0.04);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.telemetry-card .t-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--fg-light-muted);
+  letter-spacing: 0.05em;
+}
+
+.telemetry-card .t-value {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--fg-light);
+}
+
+/* Commands Directory Section */
+.c5-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.cmd-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.cmd-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cmd-tab-btn {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--fg-light-muted);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.cmd-tab-btn:hover {
+  color: var(--fg-light);
+  border-color: var(--fg-light-muted);
+}
+
+.cmd-tab-btn.active {
+  background: var(--fg-light);
+  color: var(--bg-light);
+  border-color: var(--fg-light);
+}
+
+.cmd-search-input {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--fg-light);
+  outline: none;
+  min-width: 180px;
+}
+.cmd-search-input:focus {
+  border-color: var(--gold-dark);
+}
+
+.cmd-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.cmd-list-wrap::-webkit-scrollbar {
+  width: 4px;
+}
+.cmd-list-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 4px;
+}
+
+.cmd-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.85rem 1.15rem;
+  background: rgba(6, 21, 26, 0.03);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  transition: border-color 0.25s, transform 0.25s;
+}
+
+.cmd-item:hover {
+  border-color: var(--gold-dark);
+  transform: translateX(4px);
+}
+
+.cmd-name {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #0369a1;
+  flex-shrink: 0;
+}
+
+.cmd-desc {
+  font-size: 0.84rem;
+  color: var(--fg-light-muted);
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+@media (max-width: 640px) {
+  .cmd-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+  .cmd-desc {
+    text-align: left;
+  }
+}
+
+/* Call to Action Row */
+.cta-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.cta-btn {
+  display: inline-grid;
+  place-items: center;
+  width: clamp(8.5rem, 14vw, 11.5rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--fg-light);
+  color: var(--bg-light);
+  text-align: center;
+  font: italic 400 1.3rem/1.15 var(--font-serif);
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.4s;
+  cursor: pointer;
+  border: none;
+}
+
+.cta-btn:hover {
+  background: var(--gold-dark);
+  color: #ffffff;
+}
+
+.cta-note {
+  max-width: 26ch;
+  font-size: 0.85rem;
+  color: var(--fg-light-muted);
+  line-height: 1.5;
+}
+
+.cta-links-row {
+  display: flex;
+  gap: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+.cta-links-row a {
+  color: #0369a1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+.cta-links-row a:hover {
+  color: var(--gold-dark);
+}
+
+/* Colophon Footer & Architectural Signature */
+.footer-wrap {
+  border-top: 1px solid var(--border-light);
+  padding-top: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.colophon-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.signature-label {
+  font-size: 0.68rem;
+  color: var(--fg-light-muted);
+  letter-spacing: 0.1em;
+}
+
+.signature-name {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+  font-style: italic;
+  color: var(--fg-light);
+  letter-spacing: -0.01em;
+  padding-bottom: 2px;
+  cursor: pointer;
+  transition: color 0.35s ease;
+}
+
+.signature-name:hover {
+  color: var(--gold-dark);
+}
+
+.sig-mark {
+  font-size: 0.9rem;
+  font-style: normal;
+  display: inline-block;
+  transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.signature-name:hover .sig-mark {
+  transform: translate(3px, -3px);
+}
+
+.sig-line {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold));
+  transform: scaleX(0);
+  transform-origin: 0% 50%;
+  transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.signature-name:hover .sig-line {
+  transform: scaleX(1);
+}
+
+.footer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--fg-light-muted);
+}
+
+.back-to-top {
+  font-size: 0.74rem;
+  color: var(--fg-light);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: color 0.3s;
+}
+
+.back-to-top:hover {
+  color: var(--gold-dark);
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#c1">Chuyển đến nội dung chính</a>
+<div id="noise" aria-hidden="true"></div>
+
+<!-- Preloader / Optical & Acoustic Calibration -->
+<div id="pre" role="dialog" aria-modal="true" aria-label="Đang tải và hiệu chuẩn engine âm thanh">
+  <div class="pre-hud-top mono">
+    <span><i class="pre-dot"></i>GECKO MUSIC BOT // PHÁT TRIỂN BỞI 0CUONG</span>
+    <span>THỰC NGHIỆM 042 // HIỆU CHUẨN ĐƯỜNG TRUYỀN ÂM THANH</span>
+  </div>
+  
+  <div class="pre-center">
+    <div class="pre-reticle-box" aria-hidden="true">
+      <svg id="pre-reticle-ring" viewBox="0 0 100 100" aria-label="Vòng tròn ngắm hiệu chuẩn">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(232, 239, 230, 0.15)" stroke-width="1" stroke-dasharray="2 4"/>
+        <circle cx="50" cy="50" r="34" fill="none" stroke="rgba(82, 194, 186, 0.3)" stroke-width="1"/>
+        <line x1="10" y1="50" x2="90" y2="50" stroke="rgba(232, 239, 230, 0.15)" stroke-width="0.5"/>
+        <line x1="50" y1="10" x2="50" y2="90" stroke="rgba(232, 239, 230, 0.15)" stroke-width="0.5"/>
+      </svg>
+      <div class="pre-reticle-slit"></div>
+    </div>
+    <p id="pre-status" class="mono" style="color: var(--cyan);">ĐANG KHỞI TẠO KHOANG ÂM THANH</p>
+  </div>
+  
+  <div class="pre-hud-bottom">
+    <span class="mono" style="color: var(--fg-muted);">ỔN ĐỊNH CỔNG ĐIỀU PHỐI OPUS</span>
+    <b id="pre-pct">000</b>
+  </div>
+</div>
+
+<!-- Custom Precision Cursor -->
+<div id="cur-dot" aria-hidden="true"></div>
+<div id="cur-ring" aria-hidden="true"><span id="cur-label"></span></div>
+
+<!-- Top Scroll Progress Line -->
+<div id="pg-bar" aria-hidden="true"></div>
+
+<!-- Fixed HUD Header -->
+<header id="nav">
+  <div class="nav-brand">
+    <a class="logo-monogram" href="#top" aria-label="Gecko Music Bot, quay lại đầu trang" data-mag>Gk<span>.</span></a>
+    <span class="nav-by mono">BỞI 0CUONG</span>
+  </div>
+  
+  <div class="nav-chapter-pill mono" aria-live="polite">
+    <span id="ch-num" style="color: var(--gold); font-weight: 500;">01</span>
+    <span style="opacity: 0.3;">/</span>
+    <span style="opacity: 0.5;">05</span>
+    <i class="nav-ch-dot"></i>
+    <span id="ch-name">KHỞI ĐẦU</span>
+  </div>
+  
+  <nav class="nav-menu" aria-label="Điều hướng các chương">
+    <a href="#c2">02 Kiến trúc</a>
+    <a href="#c3">03 Trụ cột</a>
+    <a href="#c4">04 Chuyển hóa</a>
+    <a href="#c5">05 Lệnh</a>
+  </nav>
+  
+  <div id="utc-clock" class="nav-clock" aria-label="Giờ UTC hiện tại">00:00:00 UTC</div>
+</header>
+
+<main id="top">
+  <!-- SECTION 01: HERO (KHỞI ĐẦU) -->
+  <section id="c1" class="hero" data-ch="01" data-t="KHỞI ĐẦU">
+    <canvas id="gl" aria-hidden="true"></canvas>
+    <div class="slit-fallback" aria-hidden="true"></div>
+    
+    <div class="hero-meta mono">
+      <div class="mask-wrap inline">
+        <span class="mask-inner hero-meta-item">TỌA ĐỘ // 45°26'B 12°19'Đ</span>
+      </div>
+      <div class="mask-wrap inline">
+        <span class="mask-inner hero-meta-item">CÔNG NGHỆ GECKO // 48KHZ STEREO OPUS</span>
+      </div>
+    </div>
+    
+    <h1 id="h1">Gecko</h1>
+    
+    <div class="hero-lead-group">
+      <p class="hero-lead" id="hero-lead">
+        <span class="mask-wrap"><span class="mask-inner hero-lead-line">Tối giản, tốc độ, ổn định,</span></span>
+        <span class="mask-wrap"><span class="mask-inner hero-lead-line">hệ thống phát nhạc Discord gọn nhẹ.</span></span>
+      </p>
+      <div class="hero-status-row mask-wrap">
+        <div class="mask-inner hero-status-inner">
+          <span id="hero-badge" class="status-badge">
+            <i class="status-live-dot"></i>
+            <span id="hero-status-text">TRỰC TUYẾN</span>
+          </span>
+          <span class="mono" style="opacity: 0.85;" id="hero-bot-user">Gecko Discord Music Bot</span>
+        </div>
+      </div>
+      <!-- BOT_TOKEN notification if needed -->
+      <div id="token-alert-box" class="token-alert-banner" style="display: none;">
+        <strong>Thông báo cấu hình:</strong> Chưa thiết lập Discord Bot Token. Mở menu <strong>Settings</strong> trong AI Studio để đặt <code>BOT_TOKEN</code>.
+      </div>
+    </div>
+    
+    <div class="hero-bot">
+      <div class="hero-prologue-wrap">
+        <p class="hero-prologue" id="hero-prologue">
+          <span class="mask-wrap"><span class="mask-inner hero-prologue-line">Được thiết kế từ đầu với độ ổn định tuyệt đối, không rò rỉ bộ nhớ.</span></span>
+          <span class="mask-wrap"><span class="mask-inner hero-prologue-line">Từ token chu kỳ xác thực đến nhịp truyền gói UDP Opus gốc,</span></span>
+          <span class="mask-wrap"><span class="mask-inner hero-prologue-line">Gecko mang đến chất âm thuần khiết không dư thừa.</span></span>
+        </p>
+      </div>
+      <div class="hero-scroll-wrap mask-wrap inline">
+        <a class="hero-scroll-btn mono mask-inner" href="#c2" data-mag aria-label="Cuộn xuống phần Kiến trúc">
+          <span class="hero-scroll-line" aria-hidden="true"><i></i></span>
+          <span>CUỘN</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 02: DISCOVERY (KIẾN TRÚC & QUANG PHỔ) -->
+  <section id="c2" class="c2" data-ch="02" data-t="KIẾN TRÚC">
+    <div class="c2-grid">
+      <div class="c2-left" data-reveal>
+        <div class="c2-badge-box mono">
+          <span style="color: var(--gold);">[ CHƯƠNG 02 ]</span>
+          <span style="color: var(--fg-muted);">// GIẢI PHẪU ÂM THANH</span>
+        </div>
+        <h2 class="c2-title">Nguyên lý vật lý của đường truyền âm.</h2>
+        <p class="c2-desc">Âm thanh không chỉ là luồng dữ liệu thụ động. Đó là sự phối hợp trực tiếp giữa độ trễ mạng, chuyển mã FFmpeg thời gian thực và thời hạn gói tin của Discord gateway.</p>
+        
+        <!-- Interactive Acoustic Frequency Visualizer -->
+        <div class="refractor-widget" data-cursor="TRƯỢT">
+          <div class="refractor-header">
+            <span class="mono" style="color: var(--gold);">BỘ CỘNG HƯỞNG ÂM HỌC</span>
+            <span id="wave-val" class="mono" style="color: #ffffff;">440 Hz (La4)</span>
+          </div>
+          
+          <div class="prism-view-box">
+            <svg class="prism-svg" viewBox="0 0 240 140" aria-label="Mô phỏng dạng sóng tần số âm thanh">
+              <defs>
+                <linearGradient id="wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#52c2ba"/>
+                  <stop offset="50%" stop-color="#f2cf7a"/>
+                  <stop offset="100%" stop-color="#38bdf8"/>
+                </linearGradient>
+              </defs>
+              <!-- Center Axis Guide -->
+              <line x1="10" y1="70" x2="230" y2="70" stroke="rgba(232,239,230,0.12)" stroke-width="1" stroke-dasharray="2 3"/>
+              <!-- Waveform Path -->
+              <path id="audio-wave-path" d="M 10 70 Q 30 20 60 70 T 110 70 T 160 70 T 210 70 T 230 70" fill="none" stroke="url(#wave-grad)" stroke-width="2.2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          
+          <div class="slider-group">
+            <div class="slider-labels">
+              <span>20 HZ (SIÊU TRẦM)</span>
+              <span>20.000 HZ (SIÊU CAO)</span>
+            </div>
+            <input id="wave-slider" class="wave-range" type="range" min="20" max="16000" value="440" step="10" aria-label="Điều chỉnh dải tần số âm thanh">
+          </div>
+          
+          <div class="refractor-readouts">
+            <div class="readout-item">
+              <span class="readout-label">TẦN SỐ LẤY MẪU</span>
+              <span id="wave-rate" class="readout-val">48,000 Hz</span>
+            </div>
+            <div class="readout-item">
+              <span class="readout-label">CODEC ÂM THANH</span>
+              <span id="wave-codec" class="readout-val">libopus</span>
+            </div>
+            <div class="readout-item">
+              <span class="readout-label">DẢI TẦN SỐ</span>
+              <span id="wave-band" class="readout-val" style="color: var(--cyan);">TRUNG ÂM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="c2-right">
+        <h2 class="sr-only">Tuyên ngôn kiến trúc</h2>
+        <p id="lede" class="lede">Mỗi bản nhạc bắt đầu từ sự tĩnh lặng. Khi nhận lệnh phát, bộ phân giải lập tức truy xuất dữ liệu mới nhất, và FFmpeg truyền tải các gói Opus stereo 48kHz với tính toàn vẹn trạng thái và không lưu bộ nhớ dư thừa.</p>
+        
+        <div class="c2-metrics-row" data-reveal>
+          <div class="metric-card">
+            <span class="metric-num">20<span style="font-size: 1.5rem;">ms</span></span>
+            <span class="metric-tag">NHỊP GÓI TIN</span>
+            <p class="metric-desc">Khoảng thời gian phát khung âm thanh theo giao thức Discord voice giúp phát nhạc mượt mà, không giật lag.</p>
+          </div>
+          <div class="metric-card">
+            <span class="metric-num">48k</span>
+            <span class="metric-tag">TẦN SỐ LẤY MẪU (HZ)</span>
+            <p class="metric-desc">Chuẩn âm thanh Opus chất lượng phát thanh đồng bộ trên mọi kênh thoại kết nối.</p>
+          </div>
+          <div class="metric-card">
+            <span class="metric-num">0.00%</span>
+            <span class="metric-tag">TỶ LỆ RÒ RỈ BỘ NHỚ</span>
+            <p class="metric-desc">Đã kiểm chứng qua 400 chu kỳ thử nghiệm tải liên tục với mức tăng tài nguyên hệ thống bằng không.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 03: IMMERSION (BỐN TRẠNG THÁI ÂM THANH) -->
+  <section id="c3" class="c3" data-ch="03" data-t="TRỤ CỘT">
+    <div class="c3-header-bar">
+      <div class="mono">
+        <span style="color: var(--cyan);">[ CHƯƠNG 03 ]</span>
+        <span style="color: var(--fg-muted); margin-left: 0.5rem;">TRỤ CỘT // BỐN TRẠNG THÁI HỆ THỐNG</span>
+      </div>
+      <span class="c3-rail" aria-hidden="true"><i id="c3-rail-fill"></i></span>
+      <span class="c3-counter-text">KHÁM PHÁ CHIỀU NGANG</span>
+    </div>
+    
+    <div class="c3-track">
+      <!-- Card 01: Low-Latency Dispatch -->
+      <article class="c3-card" data-cursor="XEM">
+        <div class="card-art-box">
+          <div class="card-art-inner art-dispatch">
+            <svg viewBox="0 0 100 100" aria-label="Mô phỏng điều phối âm thanh">
+              <polygon points="50,15 85,50 50,85 15,50" fill="none" stroke="rgba(242,207,122,0.4)" stroke-width="1.5"/>
+              <circle cx="50" cy="50" r="18" fill="rgba(242,207,122,0.15)" stroke="var(--gold)" stroke-width="1"/>
+              <line x1="50" y1="5" x2="50" y2="95" stroke="rgba(242,207,122,0.25)" stroke-width="0.75"/>
+              <line x1="5" y1="50" x2="95" y2="50" stroke="rgba(242,207,122,0.25)" stroke-width="0.75"/>
+            </svg>
+          </div>
+        </div>
+        <div class="c3-card-content">
+          <span class="c3-card-tag">TRẠNG THÁI 01 // UDP TRỰC TIẾP</span>
+          <h3 class="c3-card-title">Điều phối âm thanh</h3>
+          <p class="c3-card-p">Truyền trực tiếp qua UDP vào kênh thoại Discord với độ chính xác dưới một mili-giây. Xây dựng trực tiếp trên thư viện mã hóa sodium và chuẩn nén Opus gốc.</p>
+          <div class="c3-card-footer">
+            <span>BITRATE: 128 KBPS</span>
+            <span>KHUNG HÌNH: 20 MS</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 02: JIT Resolver -->
+      <article class="c3-card" data-cursor="XEM">
+        <div class="card-art-box">
+          <div class="card-art-inner art-resolver"></div>
+        </div>
+        <div class="c3-card-content">
+          <span class="c3-card-tag">TRẠNG THÁI 02 // BỘ GIẢI MÃ JIT</span>
+          <h3 class="c3-card-title">Đa nguồn phát</h3>
+          <p class="c3-card-p">Hỗ trợ YouTube, SoundCloud và luồng phát trực tiếp không cần bộ nhớ đệm trước. Đường dẫn âm thanh được phân giải đúng lúc (Just-In-Time) đảm bảo 100% token xác thực hợp lệ.</p>
+          <div class="c3-card-footer">
+            <span>NGUỒN HỖ TRỢ: 3+</span>
+            <span>BỘ ĐỆM: ĐIỀU PHỐI JIT</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 03: Audio Pipeline -->
+      <article class="c3-card" data-cursor="XEM">
+        <div class="card-art-box">
+          <div class="card-art-inner art-pipeline"></div>
+        </div>
+        <div class="c3-card-content">
+          <span class="c3-card-tag">TRẠNG THÁI 03 // PHỤC HỒI FFMPEG</span>
+          <h3 class="c3-card-title">Đường ống xử lý</h3>
+          <p class="c3-card-p">Quản lý tiến trình phụ FFmpeg với cơ chế giám sát treo luồng và thử lại theo hàm mũ có giới hạn. Nếu luồng phát gián đoạn, hệ thống tự động phục hồi liền mạch.</p>
+          <div class="c3-card-footer">
+            <span>GIÁM SÁT: 20.000 MS</span>
+            <span>DỌN DẸP: BẢO TOÀN</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 04: State Machine -->
+      <article class="c3-card" data-cursor="XEM">
+        <div class="card-art-box">
+          <div class="card-art-inner art-statemachine"></div>
+        </div>
+        <div class="c3-card-content">
+          <span class="c3-card-tag">TRẠNG THÁI 04 // KHÔNG RÒ RỈ</span>
+          <h3 class="c3-card-title">Máy trạng thái</h3>
+          <p class="c3-card-p">Token thế hệ nối tiếp vô hiệu hóa ngay lập tức các tác vụ phát đã lỗi thời. Các thao tác chuyển bài, dừng và quay lại được thực thi với tính nhất quán nguyên tử tuyệt đối.</p>
+          <div class="c3-card-footer">
+            <span>KIỂM THỬ: 400 LẦN ĐẠT</span>
+            <span>QUYỀN ĐIỀU PHỐI: HỢP NHẤT</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- SECTION 04: TRANSFORMATION (CHUYỂN HÓA ÂM HỌC) -->
+  <section id="c4" class="c4" data-ch="04" data-t="CHUYỂN HÓA">
+    <div class="trans-mask" aria-hidden="true"></div>
+    <div class="trans-content">
+      <span class="trans-sub">Sự kiện đảo chiều âm thanh</span>
+      <h2 class="trans-title">Âm thanh<br><em>chuyển mình.</em></h2>
+      <p class="trans-sub">Khoảng lặng hóa thành nhịp điệu. Nhịp điệu mở ra không gian.</p>
+    </div>
+  </section>
+
+  <!-- SECTION 05: RESOLUTION (COMMANDS, SPECS & TELEMETRY) -->
+  <section id="c5" class="c5" data-ch="05" data-t="LỆNH">
+    <div data-reveal>
+      <div class="mono" style="color: var(--fg-light-muted); margin-bottom: 1.5rem;">
+        <span>[ CHƯƠNG 05 ]</span>
+        <span style="margin-left: 0.5rem;">// ĐIỀU KHIỂN</span>
+      </div>
+      <h2 class="huge-title">Làm chủ<br><em>chất âm.</em></h2>
+    </div>
+    
+    <div class="c5-grid">
+      <!-- Left Column: Specs & Live Telemetry -->
+      <div class="c5-left-col" data-reveal>
+        <div class="c5-manifesto">
+          <span class="mono" style="color: var(--fg-light-muted); letter-spacing: 0.08em;">// NGUYÊN TẮC TINH GỌN</span>
+          <h3>Thiết kế cho thời gian hoạt động liên tục 24/7.</h3>
+          <p>Gecko là hệ sinh thái âm nhạc Discord chuyên biệt được thiết kế và phát triển bởi 0Cuong. Với mục tiêu loại bỏ các thư viện cồng kềnh, hiện tượng rò rỉ bộ nhớ và lỗi máy trạng thái thường gặp, Gecko vận hành gọn nhẹ, tốc độ và ổn định bền bỉ không cần can thiệp.</p>
+          <p>Mỗi lệnh slash đều tương tác trực tiếp với bộ điều khiển phát đồng bộ, có giới hạn số lần thử lại nghiêm ngặt, cách ly phiên thoại và cung cấp dữ liệu giám sát sức khỏe minh bạch.</p>
+        </div>
+        
+        <!-- Live Telemetry Matrix -->
+        <div>
+          <span class="mono" style="color: var(--fg-light-muted); letter-spacing: 0.08em;">// THÔNG SỐ VẬN HÀNH THỜI GIAN THỰC</span>
+          <div class="telemetry-dashboard">
+            <div class="telemetry-card">
+              <span class="t-label">DISCORD</span>
+              <span class="t-value" id="stat-discord">ĐÃ KẾT NỐI</span>
+            </div>
+            <div class="telemetry-card">
+              <span class="t-label">MÁY CHỦ</span>
+              <span class="t-value" id="stat-guilds">0</span>
+            </div>
+            <div class="telemetry-card">
+              <span class="t-label">HÀNG ĐỢI</span>
+              <span class="t-value" id="stat-queues">0</span>
+            </div>
+            <div class="telemetry-card">
+              <span class="t-label">BỘ NHỚ</span>
+              <span class="t-value" id="stat-mem">32 MB</span>
+            </div>
+            <div class="telemetry-card">
+              <span class="t-label">THỜI GIAN CHẠY</span>
+              <span class="t-value" id="stat-uptime">0s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Specifications Table -->
+        <table class="specs-table" aria-label="Bảng thông số kỹ thuật chi tiết">
+          <tbody>
+            <tr>
+              <td>KIẾN TRÚC &amp; PHÁT TRIỂN</td>
+              <td>0Cuong</td>
+            </tr>
+            <tr>
+              <td>ĐIỀU PHỐI ÂM THANH</td>
+              <td>Luồng Discord Voice UDP RTP</td>
+            </tr>
+            <tr>
+              <td>CHUYỂN MÃ ÂM THANH</td>
+              <td>FFmpeg Static (libopus 48kHz Stereo)</td>
+            </tr>
+            <tr>
+              <td>ENGINE CHUYỂN ĐỘNG</td>
+              <td>GSAP 3.12 Core + ScrollTrigger</td>
+            </tr>
+            <tr>
+              <td>MÔ HÌNH ĐỒNG THỜI</td>
+              <td>Tuần tự hóa Token đơn quyền hạn</td>
+            </tr>
+            <tr>
+              <td>KIỂM ĐỊNH TẢI</td>
+              <td>400 chu kỳ / Xác thực 0 rò rỉ</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div class="cta-wrap">
+          <a id="cta-btn" class="cta-btn" href="https://github.com/0Cuong" target="_blank" rel="noopener noreferrer" data-mag data-cursor="GITHUB" aria-label="Gecko trên GitHub (mở trong tab mới)">
+            Gecko<br>trên GitHub ↗
+          </a>
+          <span class="cta-note mono">Kho mã nguồn mở engine âm nhạc và dữ liệu giám sát sức khỏe có sẵn trên GitHub.</span>
+        </div>
+        
+        <div class="cta-links-row">
+          <a href="/healthz" target="_blank">API kiểm tra sức khỏe (/healthz) &rarr;</a>
+          <a href="/metrics" target="_blank">Chỉ số Prometheus (/metrics) &rarr;</a>
+        </div>
+      </div>
+
+      <!-- Right Column: Interactive Slash Commands Directory -->
+      <div class="c5-right-col" data-reveal>
+        <div class="cmd-filter-bar">
+          <div class="cmd-tabs" role="tablist" aria-label="Danh mục lệnh">
+            <button class="cmd-tab-btn active" data-tab="all" role="tab" aria-selected="true">Tất cả (19)</button>
+            <button class="cmd-tab-btn" data-tab="playback" role="tab" aria-selected="false">Phát nhạc</button>
+            <button class="cmd-tab-btn" data-tab="queue" role="tab" aria-selected="false">Hàng đợi</button>
+            <button class="cmd-tab-btn" data-tab="modes" role="tab" aria-selected="false">Chế độ</button>
+            <button class="cmd-tab-btn" data-tab="system" role="tab" aria-selected="false">Hệ thống</button>
+          </div>
+          <input type="text" id="cmd-search" class="cmd-search-input" placeholder="Tìm kiếm lệnh..." aria-label="Lọc lệnh slash">
+        </div>
+
+        <div class="cmd-list-wrap" id="cmd-container">
+          <!-- Playback Commands -->
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/play</span>
+            <span class="cmd-desc">Phát bài hát hoặc danh sách phát từ YouTube, SoundCloud hoặc liên kết trực tiếp.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/pause</span>
+            <span class="cmd-desc">Tạm dừng bài hát đang phát.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/resume</span>
+            <span class="cmd-desc">Tiếp tục phát bài hát đang tạm dừng.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/skip</span>
+            <span class="cmd-desc">Bỏ qua bài hát hiện tại.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/previous</span>
+            <span class="cmd-desc">Phát lại bài hát trước đó từ lịch sử phát.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/stop</span>
+            <span class="cmd-desc">Dừng phát nhạc, xóa hàng đợi và rời khỏi kênh thoại.</span>
+          </div>
+          <div class="cmd-item" data-cat="playback">
+            <span class="cmd-name">/volume</span>
+            <span class="cmd-desc">Điều chỉnh mức âm lượng (1-200%).</span>
+          </div>
+
+          <!-- Queue Management -->
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/queue</span>
+            <span class="cmd-desc">Xem và quản lý hàng đợi nhạc sắp tới với bảng điều khiển tương tác.</span>
+          </div>
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/nowplaying</span>
+            <span class="cmd-desc">Hiển thị bài hát đang phát cùng thời lượng và tiến trình phát.</span>
+          </div>
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/search</span>
+            <span class="cmd-desc">Tìm kiếm bài hát trên YouTube/SoundCloud và chọn bài để phát.</span>
+          </div>
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/remove</span>
+            <span class="cmd-desc">Xóa một bài hát khỏi hàng đợi theo số thứ tự vị trí.</span>
+          </div>
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/clear</span>
+            <span class="cmd-desc">Xóa toàn bộ hàng đợi (vẫn giữ bài hát hiện tại đang phát).</span>
+          </div>
+          <div class="cmd-item" data-cat="queue">
+            <span class="cmd-name">/move</span>
+            <span class="cmd-desc">Di chuyển bài hát đến vị trí mới trong hàng đợi.</span>
+          </div>
+
+          <!-- Modes -->
+          <div class="cmd-item" data-cat="modes">
+            <span class="cmd-name">/loop</span>
+            <span class="cmd-desc">Bật/tắt chế độ lặp lại (tắt, lặp bài, lặp toàn bộ hàng đợi).</span>
+          </div>
+          <div class="cmd-item" data-cat="modes">
+            <span class="cmd-name">/shuffle</span>
+            <span class="cmd-desc">Bật/tắt chế độ phát xáo trộn danh sách bài hát sắp tới.</span>
+          </div>
+          <div class="cmd-item" data-cat="modes">
+            <span class="cmd-name">/autoplay</span>
+            <span class="cmd-desc">Bật/tắt tự động phát - tự động thêm bài liên quan khi hết hàng đợi.</span>
+          </div>
+
+          <!-- System & Diagnostics -->
+          <div class="cmd-item" data-cat="system">
+            <span class="cmd-name">/join</span>
+            <span class="cmd-desc">Tham gia vào kênh thoại hiện tại của bạn.</span>
+          </div>
+          <div class="cmd-item" data-cat="system">
+            <span class="cmd-name">/leave</span>
+            <span class="cmd-desc">Rời khỏi kênh thoại và dừng phát nhạc.</span>
+          </div>
+          <div class="cmd-item" data-cat="system">
+            <span class="cmd-name">/system</span>
+            <span class="cmd-desc">Hiển thị các chỉ số hiệu năng và trạng thái sức khỏe bot.</span>
+          </div>
+          <div class="cmd-item" data-cat="system">
+            <span class="cmd-name">/help</span>
+            <span class="cmd-desc">Hiển thị danh sách tất cả các lệnh được hỗ trợ.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <footer class="footer-wrap">
+      <!-- Architectural Signature -->
+      <div class="colophon-signature">
+        <span class="signature-label mono">THIẾT KẾ &amp; PHÁT TRIỂN BỞI</span>
+        <a class="signature-name" href="https://github.com/0Cuong" target="_blank" rel="noopener noreferrer" data-cursor="GITHUB" aria-label="0Cuong trên GitHub (mở trong tab mới)">
+          <span class="sig-text">0Cuong</span>
+          <span class="sig-mark" aria-hidden="true">↗</span>
+          <span class="sig-line" aria-hidden="true"></span>
+        </a>
+      </div>
+      
+      <div class="footer-meta mono">
+        <span id="footer-utc">00:00:00 UTC // 45°26'B 12°19'Đ</span>
+        <span>&copy; 2026 GECKO MUSIC BOT. BẢO LƯU MỌI QUYỀN.</span>
+      </div>
+      
+      <a class="back-to-top mono" href="#top" data-mag aria-label="Quay lại đầu trang">
+        VỀ ĐẦU TRANG <span aria-hidden="true">↑</span>
+      </a>
+    </footer>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+// Gecko Music Bot Showcase & Kinetic Motion System
+// Designed & Engineered by 0Cuong
+(() => {
+  'use strict';
+
+  const $ = (s, c = document) => c.querySelector(s);
+  const $$ = (s, c = document) => [...c.querySelectorAll(s)];
+  const root = document.documentElement;
+  const pre = $('#pre');
+  const nav = $('#nav');
+
+  if (!window.gsap || !window.ScrollTrigger) {
+    if (pre) pre.remove();
+    return;
+  }
+
+  gsap.registerPlugin(ScrollTrigger);
+  if (window.history && 'scrollRestoration' in window.history) {
+    window.history.scrollRestoration = 'manual';
+  }
+  window.scrollTo(0, 0);
+
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const FINE = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  const L = {
+    open: 0,
+    mx: 0.5,
+    my: 0.5,
+    targetMx: 0.5,
+    targetMy: 0.5,
+    vel: 0
+  };
+
+  // Live UTC Clock telemetry
+  function updateClocks() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const timeStr = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+    const navClock = $('#utc-clock');
+    const footerClock = $('#footer-utc');
+    if (navClock) navClock.textContent = timeStr;
+    if (footerClock) footerClock.textContent = `${timeStr} // 45°26'B 12°19'Đ`;
+  }
+  updateClocks();
+  setInterval(updateClocks, 1000);
+
+  // WebGL Volumetric Soundwave / Caustic Slit Shader
+  const VS = `
+    attribute vec2 a;
+    void main() {
+      gl_Position = vec4(a, 0.0, 1.0);
+    }
+  `;
+
+  const FS = `
+    precision highp float;
+    uniform vec2 uR;
+    uniform float uT;
+    uniform float uO; // aperture 0..1
+    uniform vec2 uM;  // normalized mouse
+    uniform float uV; // mouse velocity
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float a = 0.5;
+      mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+      for (int i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p = rot * p * 2.02 + vec2(100.0);
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      vec2 p = (gl_FragCoord.xy - 0.5 * uR) / min(uR.x, uR.y);
+      float t = uT * 0.07;
+
+      float mouseTarget = (uM.x - 0.5) * (uR.x / min(uR.x, uR.y)) * 0.45;
+      float slitX = mouseTarget * 0.65 + sin(t * 0.4) * 0.025;
+
+      float wave = (fbm(vec2(p.y * 1.8 - t * 0.5, t * 0.2)) - 0.5) * 0.12;
+      float dist = abs(p.x - slitX - wave);
+
+      float width = mix(0.0015, 0.045, uO) + uV * 0.02;
+      float core = pow(width / (dist + width), 2.2) * uO;
+
+      float haze = exp(-dist * 2.8) * 0.65 * uO;
+      float dust = fbm(vec2(p.x * 3.5 + t * 0.3, p.y * 4.0 - t * 0.6));
+      float smoke = fbm(vec2(p.x * 2.0 - t * 0.2, p.y * 2.5 + t * 0.4));
+      float falloff = smoothstep(1.1, 0.1, abs(p.y * 1.15));
+
+      float distR = abs(p.x - slitX - wave * 1.04);
+      float distB = abs(p.x - slitX - wave * 0.96);
+      float coreR = pow(width / (distR + width), 2.2) * uO;
+      float coreB = pow(width / (distB + width), 2.2) * uO;
+
+      vec3 deepTeal = vec3(0.024, 0.082, 0.102);
+      vec3 causticCyan = vec3(0.32, 0.76, 0.73);
+      vec3 luminousGold = vec3(0.95, 0.81, 0.48);
+      vec3 whiteHot = vec3(0.98, 0.97, 0.93);
+
+      vec3 beamColor = mix(causticCyan, luminousGold, smoothstep(0.15, 0.85, core));
+      beamColor = mix(beamColor, whiteHot, smoothstep(0.85, 1.4, core));
+
+      vec3 col = deepTeal;
+      col += vec3(coreR * 0.14, 0.0, coreB * 0.18);
+      col += beamColor * (core * 1.4 + haze * dust * 1.2 + smoke * 0.18 * uO) * falloff;
+
+      float grain = (hash(gl_FragCoord.xy + fract(uT) * 117.0) - 0.5) * 0.022;
+      col += grain;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function makeGL() {
+    try {
+      const c = $('#gl');
+      if (!c) return null;
+      const g = c.getContext('webgl', {
+        antialias: false,
+        alpha: false,
+        powerPreference: 'low-power'
+      });
+      if (!g) return null;
+
+      const sh = (t, src) => {
+        const o = g.createShader(t);
+        g.shaderSource(o, src);
+        g.compileShader(o);
+        return g.getShaderParameter(o, g.COMPILE_STATUS) ? o : null;
+      };
+
+      const v = sh(g.VERTEX_SHADER, VS);
+      const f = sh(g.FRAGMENT_SHADER, FS);
+      if (!v || !f) return null;
+
+      const p = g.createProgram();
+      g.attachShader(p, v);
+      g.attachShader(p, f);
+      g.linkProgram(p);
+      if (!g.getProgramParameter(p, g.LINK_STATUS)) return null;
+
+      g.useProgram(p);
+      g.bindBuffer(g.ARRAY_BUFFER, g.createBuffer());
+      g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), g.STATIC_DRAW);
+
+      const a = g.getAttribLocation(p, 'a');
+      g.enableVertexAttribArray(a);
+      g.vertexAttribPointer(a, 2, g.FLOAT, false, 0, 0);
+
+      const U = (name) => g.getUniformLocation(p, name);
+      const uR = U('uR');
+      const uT = U('uT');
+      const uO = U('uO');
+      const uM = U('uM');
+      const uV = U('uV');
+
+      const draw = (t) => {
+        g.uniform2f(uR, c.width, c.height);
+        g.uniform1f(uT, t);
+        g.uniform1f(uO, L.open);
+        g.uniform2f(uM, L.mx, L.my);
+        g.uniform1f(uV, L.vel);
+        g.drawArrays(g.TRIANGLES, 0, 3);
+      };
+
+      const size = () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * (window.innerWidth < 700 ? 0.75 : 1);
+        c.width = (c.clientWidth * dpr) | 0;
+        c.height = (c.clientHeight * dpr) | 0;
+        g.viewport(0, 0, c.width, c.height);
+      };
+      size();
+
+      window.addEventListener('resize', () => {
+        size();
+        if (RM) draw(0);
+      }, { passive: true });
+
+      c.addEventListener('webglcontextlost', (e) => e.preventDefault(), false);
+      c.addEventListener('webglcontextrestored', () => size(), false);
+
+      return { draw, resize: size };
+    } catch (err) {
+      console.warn('WebGL init failed, using CSS fallback', err);
+      return null;
+    }
+  }
+
+  const G = makeGL();
+  if (!G) {
+    root.classList.add('nogl');
+  }
+
+  // Unicode NFC Normalization Utility
+  function normalizeVietnameseText(value) {
+    if (typeof value !== 'string') return value;
+    return value.normalize('NFC');
+  }
+
+  // Split text helpers
+  function chars(el) {
+    if (!el) return [];
+    const text = normalizeVietnameseText(el.textContent.trim());
+    el.setAttribute('aria-label', text);
+    el.textContent = '';
+    const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+      ? new Intl.Segmenter('vi', { granularity: 'grapheme' })
+      : null;
+    const graphemes = segmenter
+      ? [...segmenter.segment(text)].map((s) => s.segment)
+      : [...text];
+    return graphemes.map((ch) => {
+      const wrap = document.createElement('span');
+      wrap.className = 'c-wrap mask-wrap inline';
+      wrap.setAttribute('aria-hidden', 'true');
+      const inner = document.createElement('span');
+      inner.className = 'c-inner mask-inner';
+      inner.textContent = normalizeVietnameseText(ch);
+      wrap.appendChild(inner);
+      el.appendChild(wrap);
+      return inner;
+    });
+  }
+
+  function words(el) {
+    if (!el) return [];
+    const text = normalizeVietnameseText(el.textContent.trim());
+    el.setAttribute('aria-label', text);
+    const tokens = text.split(/(\s+)/);
+    el.textContent = '';
+    const wordSpans = [];
+    tokens.forEach((token) => {
+      if (!token) return;
+      if (/^\s+$/.test(token)) {
+        el.appendChild(document.createTextNode(token));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'w-span';
+        span.textContent = normalizeVietnameseText(token);
+        el.appendChild(span);
+        wordSpans.push(span);
+      }
+    });
+    return wordSpans;
+  }
+
+  const HC = chars($('#h1'));
+  const LW = words($('#lede'));
+
+  if (!RM) {
+    gsap.set('#h1', {
+      clipPath: 'polygon(0% 100%, 100% 100%, 100% 100%, 0% 100%)',
+      webkitClipPath: 'polygon(0% 100%, 100% 100%, 100% 100%, 0% 100%)'
+    });
+    gsap.set(HC, { yPercent: 125, opacity: 0, rotateX: -35, scale: 0.94, filter: 'blur(4px)' });
+    gsap.set('.hero-meta-item', { yPercent: 110, opacity: 0 });
+    gsap.set('.hero-lead-line', { yPercent: 115, opacity: 0 });
+    gsap.set('.hero-status-inner', { yPercent: 115, opacity: 0 });
+    gsap.set('.hero-prologue-line', { yPercent: 110, opacity: 0 });
+    gsap.set('.hero-scroll-btn', { yPercent: 40, opacity: 0 });
+    gsap.set(nav, { yPercent: -105 });
+  }
+
+  // Interactive Audio Frequency Spectrum Widget
+  function initAudioSpectrumWidget() {
+    const slider = $('#wave-slider');
+    const valText = $('#wave-val');
+    const rateText = $('#wave-rate');
+    const bandText = $('#wave-band');
+    const wavePath = $('#audio-wave-path');
+    if (!slider) return;
+
+    const updateAcoustic = (freq) => {
+      if (valText) {
+        if (freq === 440) valText.textContent = '440 Hz (La4)';
+        else if (freq < 1000) valText.textContent = `${freq} Hz`;
+        else valText.textContent = `${(freq / 1000).toFixed(1)} kHz`;
+      }
+
+      let band = 'TRUNG ÂM';
+      if (freq < 60) band = 'SIÊU TRẦM';
+      else if (freq < 250) band = 'ÂM TRẦM';
+      else if (freq < 500) band = 'TRUNG TRẦM';
+      else if (freq < 2000) band = 'TRUNG ÂM';
+      else if (freq < 6000) band = 'TRUNG CAO';
+      else band = 'SIÊU CAO';
+
+      if (bandText) bandText.textContent = band;
+
+      // Morph SVG Wave based on frequency
+      if (wavePath) {
+        const cycles = Math.max(1, Math.min(14, Math.round(Math.log10(freq) * 3.5)));
+        const amp = Math.max(8, 50 - cycles * 2.5);
+        let d = 'M 10 70 ';
+        const step = 220 / (cycles * 2);
+        for (let i = 0; i < cycles; i++) {
+          const x1 = 10 + (i * 2 + 1) * step;
+          const y1 = 70 - amp;
+          const x2 = 10 + (i * 2 + 2) * step;
+          const y2 = 70;
+          const xc = (x1 + x2) / 2;
+          d += `Q ${x1.toFixed(1)} ${y1.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)} `;
+        }
+        wavePath.setAttribute('d', d);
+      }
+    };
+
+    slider.addEventListener('input', (e) => {
+      updateAcoustic(Number(e.target.value));
+    });
+    updateAcoustic(440);
+  }
+  initAudioSpectrumWidget();
+
+  // Slash Commands Category Filter & Live Search
+  function initCommandsDirectory() {
+    const tabs = $$('.cmd-tab-btn');
+    const items = $$('.cmd-item');
+    const searchInput = $('#cmd-search');
+
+    let currentCategory = 'all';
+    let searchQuery = '';
+
+    const filterList = () => {
+      items.forEach(item => {
+        const cat = item.dataset.cat || '';
+        const name = normalizeVietnameseText(item.querySelector('.cmd-name')?.textContent || '').toLowerCase();
+        const desc = normalizeVietnameseText(item.querySelector('.cmd-desc')?.textContent || '').toLowerCase();
+
+        const matchCat = currentCategory === 'all' || cat === currentCategory;
+        const matchSearch = !searchQuery || name.includes(searchQuery) || desc.includes(searchQuery);
+
+        if (matchCat && matchSearch) {
+          item.style.display = 'flex';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    };
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+        currentCategory = tab.dataset.tab || 'all';
+        filterList();
+      });
+    });
+
+    if (searchInput) {
+      searchInput.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const clipboardText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+        const normalized = normalizeVietnameseText(clipboardText);
+
+        const start = searchInput.selectionStart ?? searchInput.value.length;
+        const end = searchInput.selectionEnd ?? searchInput.value.length;
+        const val = searchInput.value;
+        searchInput.value = val.slice(0, start) + normalized + val.slice(end);
+        const newPos = start + normalized.length;
+        searchInput.setSelectionRange(newPos, newPos);
+
+        searchQuery = normalizeVietnameseText(searchInput.value).toLowerCase().trim();
+        filterList();
+      });
+
+      searchInput.addEventListener('input', () => {
+        const norm = normalizeVietnameseText(searchInput.value);
+        if (norm !== searchInput.value) {
+          const start = searchInput.selectionStart;
+          const end = searchInput.selectionEnd;
+          searchInput.value = norm;
+          if (start !== null && end !== null) {
+            searchInput.setSelectionRange(start, end);
+          }
+        }
+        searchQuery = norm.toLowerCase().trim();
+        filterList();
+      });
+    }
+  }
+  initCommandsDirectory();
+
+  // Live Telemetry Polling from /healthz
+  async function pollTelemetry() {
+    try {
+      const res = await fetch('/healthz');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const discordEl = $('#stat-discord');
+      const guildsEl = $('#stat-guilds');
+      const queuesEl = $('#stat-queues');
+      const memEl = $('#stat-mem');
+      const uptimeEl = $('#stat-uptime');
+      const heroBadge = $('#hero-badge');
+      const heroStatusText = $('#hero-status-text');
+      const tokenAlert = $('#token-alert-box');
+
+      if (discordEl && data.discord) {
+        const dStat = normalizeVietnameseText(data.discord).toLowerCase();
+        discordEl.textContent = dStat === 'connected' ? 'ĐÃ KẾT NỐI' : (dStat === 'disconnected' ? 'MẤT KẾT NỐI' : normalizeVietnameseText(data.discord.toUpperCase()));
+      }
+      if (guildsEl && data.guilds !== undefined) guildsEl.textContent = data.guilds;
+      if (queuesEl && data.queues !== undefined) queuesEl.textContent = data.queues;
+      if (memEl && data.memoryMB) memEl.textContent = `${data.memoryMB} MB`;
+      if (uptimeEl && data.uptimeSeconds !== undefined) {
+        const s = data.uptimeSeconds;
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        uptimeEl.textContent = h > 0 ? `${h}h ${m}m` : `${s}s`;
+      }
+
+      if (heroBadge && heroStatusText) {
+        if (data.status === 'healthy') {
+          heroBadge.className = 'status-badge';
+          heroStatusText.textContent = 'TRỰC TUYẾN';
+          if (tokenAlert) tokenAlert.style.display = 'none';
+        } else if (data.status === 'awaiting_token') {
+          heroBadge.className = 'status-badge awaiting';
+          heroStatusText.textContent = 'CHỜ BOT_TOKEN';
+          if (tokenAlert) tokenAlert.style.display = 'block';
+        } else {
+          heroBadge.className = 'status-badge standby';
+          const discStatus = normalizeVietnameseText(data.discord || '').toLowerCase();
+          heroStatusText.textContent = discStatus === 'connected' ? 'ĐÃ KẾT NỐI' : (discStatus === 'disconnected' ? 'MẤT KẾT NỐI' : (discStatus ? normalizeVietnameseText(discStatus.toUpperCase()) : 'CHẾ ĐỘ CHỜ'));
+        }
+      }
+    } catch {
+      // Offline fallback: keep pre-rendered values
+    }
+  }
+  pollTelemetry();
+  setInterval(pollTelemetry, 10000);
+
+  // Scroll Choreography & GSAP Timelines
+  function setupScroll() {
+    const chNum = $('#ch-num');
+    const chName = $('#ch-name');
+    const sections = $$('[data-ch]');
+    let currentCh = -1;
+    let navHidden = false;
+    let heroVisible = true;
+
+    const updateChapter = () => {
+      let activeIndex = 0;
+      const threshold = window.innerHeight * 0.45;
+      sections.forEach((sec, idx) => {
+        const rect = sec.getBoundingClientRect();
+        if (rect.top <= threshold) {
+          activeIndex = idx;
+        }
+      });
+
+      if (activeIndex !== currentCh && sections[activeIndex]) {
+        currentCh = activeIndex;
+        const newNum = sections[activeIndex].dataset.ch;
+        const newName = sections[activeIndex].dataset.t;
+
+        if (chNum && chName) {
+          gsap.timeline()
+            .to([chNum, chName], { y: -8, opacity: 0, duration: 0.18, ease: 'power2.in' })
+            .add(() => {
+              chNum.textContent = newNum;
+              chName.textContent = newName;
+            })
+            .to([chNum, chName], { y: 0, opacity: 1, duration: 0.32, ease: 'power2.out' });
+        }
+      }
+    };
+
+    ScrollTrigger.create({
+      start: 0,
+      end: 'max',
+      onUpdate: (self) => {
+        updateChapter();
+        const shouldHide = self.direction === 1 && self.scroll() > 240;
+        if (shouldHide !== navHidden) {
+          navHidden = shouldHide;
+          gsap.to(nav, {
+            yPercent: navHidden ? -120 : 0,
+            duration: 0.6,
+            ease: 'expo.out',
+            overwrite: 'auto'
+          });
+        }
+      }
+    });
+
+    ScrollTrigger.addEventListener('refresh', updateChapter);
+
+    gsap.to('#pg-bar', {
+      scaleX: 1,
+      ease: 'none',
+      scrollTrigger: {
+        start: 0,
+        end: 'max',
+        scrub: 0.2
+      }
+    });
+
+    ScrollTrigger.create({
+      trigger: '#c1',
+      start: 'top bottom',
+      end: 'bottom top',
+      onToggle: (self) => {
+        heroVisible = self.isActive;
+      }
+    });
+
+    gsap.ticker.add((time) => {
+      if (G && heroVisible && !RM && !document.hidden) {
+        L.mx += (L.targetMx - L.mx) * 0.08;
+        L.my += (L.targetMy - L.my) * 0.08;
+        L.vel *= 0.92;
+        G.draw(time);
+      }
+    });
+
+    const mm = gsap.matchMedia();
+
+    mm.add(
+      {
+        motionOk: '(prefers-reduced-motion: no-preference)',
+        isDesktop: '(min-width: 900px)',
+        reduced: '(prefers-reduced-motion: reduce)'
+      },
+      (ctx) => {
+        const { motionOk, isDesktop, reduced } = ctx.conditions;
+        const c3 = $('#c3');
+
+        const revealElements = gsap.utils.toArray(isDesktop ? '[data-reveal]' : '[data-reveal], .c3-card');
+        revealElements.forEach((el) => {
+          gsap.from(el, {
+            opacity: 0,
+            y: motionOk ? 42 : 0,
+            duration: motionOk ? 1.0 : 0.3,
+            ease: 'expo.out',
+            scrollTrigger: {
+              trigger: el,
+              start: 'top 88%',
+              once: true
+            }
+          });
+        });
+
+        if (reduced) {
+          gsap.set('.trans-mask', { clipPath: 'circle(150% at 50% 50%)' });
+          gsap.set(LW, { opacity: 1, filter: 'none' });
+          return;
+        }
+
+        // Hero Multi-Layered Spatial Parallax
+        gsap.to('#h1', {
+          yPercent: -22,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#c1',
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true
+          }
+        });
+
+        gsap.to('#gl', {
+          yPercent: 14,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#c1',
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true
+          }
+        });
+
+        gsap.to('.hero-meta', {
+          yPercent: -15,
+          opacity: 0.25,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#c1',
+            start: 'top top',
+            end: '45% top',
+            scrub: true
+          }
+        });
+
+        gsap.to('.hero-lead-group', {
+          yPercent: -10,
+          opacity: 0.35,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: '#c1',
+            start: 'top top',
+            end: '60% top',
+            scrub: true
+          }
+        });
+
+        // Discovery scrubbed illumination
+        gsap.fromTo(
+          LW,
+          { opacity: 0.14, filter: 'blur(2px)' },
+          {
+            opacity: 1,
+            filter: 'blur(0px)',
+            stagger: 0.08,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: '#lede',
+              start: 'top 82%',
+              end: 'bottom 48%',
+              scrub: true
+            }
+          }
+        );
+
+        // Immersion Horizontal pinned slider on desktop
+        if (isDesktop && c3) {
+          c3.classList.add('is-pinned');
+          const track = $('.c3-track');
+          const totalDistance = () => track.scrollWidth - root.clientWidth;
+
+          gsap.timeline({
+            defaults: { ease: 'none' },
+            scrollTrigger: {
+              trigger: c3,
+              start: 'top top',
+              end: () => '+=' + totalDistance(),
+              pin: true,
+              scrub: 0.7,
+              anticipatePin: 1,
+              invalidateOnRefresh: true
+            }
+          })
+          .to(track, { x: () => -totalDistance() }, 0)
+          .to('#c3-rail-fill', { scaleX: 1 }, 0)
+          .to('.card-art-inner', { rotate: 25, stagger: 0.1 }, 0)
+          .to('.c3-card', { x: -30, stagger: 0.05 }, 0);
+        }
+
+        // Transformation Inversion Event
+        const c4 = $('#c4');
+        if (c4) {
+          gsap.timeline({
+            scrollTrigger: {
+              trigger: c4,
+              start: 'top top',
+              end: '+=130%',
+              pin: true,
+              scrub: 0.6
+            }
+          })
+          .fromTo(
+            '.trans-mask',
+            { clipPath: 'circle(0% at 50% 50%)' },
+            { clipPath: 'circle(140% at 50% 50%)', ease: 'power2.inOut' },
+            0
+          )
+          .fromTo('.trans-title', { scale: 0.88, letterSpacing: '-0.04em' }, { scale: 1.05, letterSpacing: '-0.015em', ease: 'none' }, 0)
+          .fromTo('.trans-sub', { opacity: 0, y: 30 }, { opacity: 1, y: 0, ease: 'power2.out' }, 0.65);
+        }
+
+        return () => {
+          if (c3) c3.classList.remove('is-pinned');
+        };
+      }
+    );
+
+    ScrollTrigger.refresh();
+  }
+
+  // Pointer & Precision Cursor
+  function initPointer() {
+    const curDot = $('#cur-dot');
+    const curRing = $('#cur-ring');
+    const curLabel = $('#cur-label');
+    if (!curDot || !curRing) return;
+
+    curDot.style.display = 'block';
+    curRing.style.display = 'flex';
+
+    let lastX = window.innerWidth / 2;
+    let lastY = window.innerHeight / 2;
+
+    const dotX = gsap.quickTo(curDot, 'x', { duration: 0.1, ease: 'power3' });
+    const dotY = gsap.quickTo(curDot, 'y', { duration: 0.1, ease: 'power3' });
+    const ringX = gsap.quickTo(curRing, 'x', { duration: 0.28, ease: 'power3' });
+    const ringY = gsap.quickTo(curRing, 'y', { duration: 0.28, ease: 'power3' });
+
+    window.addEventListener('pointermove', (e) => {
+      const vx = e.clientX - lastX;
+      const vy = e.clientY - lastY;
+      const speed = Math.hypot(vx, vy);
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      L.targetMx = e.clientX / window.innerWidth;
+      L.targetMy = e.clientY / window.innerHeight;
+      L.vel = Math.min(speed * 0.01, 1.0);
+
+      curDot.style.opacity = '1';
+      curRing.style.opacity = '1';
+      dotX(e.clientX);
+      dotY(e.clientY);
+      ringX(e.clientX);
+      ringY(e.clientY);
+
+      const hero = $('#c1');
+      if (hero && window.scrollY < window.innerHeight) {
+        const rx = ((e.clientY / window.innerHeight) - 0.5) * -4;
+        const ry = ((e.clientX / window.innerWidth) - 0.5) * 6;
+        gsap.to('#h1', { rotateX: rx, rotateY: ry, duration: 1.2, ease: 'power2.out', overwrite: 'auto' });
+      }
+    }, { passive: true });
+
+    $$('a, button, input[type="range"], input[type="text"]').forEach((el) => {
+      el.addEventListener('pointerenter', () => {
+        gsap.to(curRing, { scale: 1.6, borderColor: 'var(--gold)', duration: 0.35, ease: 'expo.out' });
+        gsap.to(curDot, { scale: 0.4, duration: 0.35 });
+      });
+      el.addEventListener('pointerleave', () => {
+        gsap.to(curRing, { scale: 1, borderColor: 'rgba(255,255,255,0.45)', duration: 0.35, ease: 'expo.out' });
+        gsap.to(curDot, { scale: 1, duration: 0.35 });
+        if (curLabel) curLabel.textContent = '';
+      });
+    });
+
+    $$('[data-cursor]').forEach((el) => {
+      el.addEventListener('pointerenter', () => {
+        const text = el.dataset.cursor || '';
+        if (curLabel) curLabel.textContent = text;
+        gsap.to(curRing, { scale: 2.2, duration: 0.4, ease: 'expo.out' });
+      });
+      el.addEventListener('pointerleave', () => {
+        if (curLabel) curLabel.textContent = '';
+        gsap.to(curRing, { scale: 1, duration: 0.4, ease: 'expo.out' });
+      });
+    });
+
+    $$('[data-mag]').forEach((el) => {
+      const springEase = 'elastic.out(1, 0.45)';
+      const mx = gsap.quickTo(el, 'x', { duration: 0.8, ease: springEase });
+      const my = gsap.quickTo(el, 'y', { duration: 0.8, ease: springEase });
+      let isHovered = false;
+
+      window.addEventListener('pointermove', (e) => {
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2 - gsap.getProperty(el, 'x');
+        const centerY = rect.top + rect.height / 2 - gsap.getProperty(el, 'y');
+        const dx = e.clientX - centerX;
+        const dy = e.clientY - centerY;
+        const dist = Math.hypot(dx, dy);
+        const radius = Math.max(rect.width, rect.height) * 0.9;
+
+        if (dist < radius) {
+          isHovered = true;
+          mx(Math.max(-14, Math.min(14, dx * 0.28)));
+          my(Math.max(-14, Math.min(14, dy * 0.28)));
+        } else if (isHovered) {
+          isHovered = false;
+          mx(0);
+          my(0);
+        }
+      }, { passive: true });
+    });
+  }
+
+  // Master Intro Sequence
+  function playIntro() {
+    const introTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+
+    // 1. Preloader curtain slide-up
+    introTl
+      .to(pre, {
+        yPercent: -100,
+        duration: 1.15,
+        ease: 'expo.inOut'
+      })
+      .add(() => {
+        root.classList.remove('is-loading');
+      }, 0.55);
+
+    // 2. WebGL background aperture slit expansion & ambient radiance
+    if (G) {
+      introTl.to(L, { open: 1.0, duration: 2.4, ease: 'power3.out' }, 0.4);
+    } else {
+      introTl.from('.slit-fallback', { scaleX: 0, opacity: 0, duration: 2.0, ease: 'power3.out' }, 0.4);
+    }
+
+    // 3. Navigation bar entry (shell / HUD boundary)
+    introTl.to(nav, {
+      yPercent: 0,
+      duration: 1.1,
+      ease: 'power3.out'
+    }, 0.5);
+
+    // 4. Hero meta coordinates (spatial framing)
+    introTl.to('.hero-meta-item', {
+      yPercent: 0,
+      opacity: 1,
+      duration: 0.95,
+      stagger: 0.08,
+      ease: 'power3.out'
+    }, 0.65);
+
+    // 5. Headline (#h1 "Gecko") - Unified single timeline for clip-path mask & inner character reveal (HC)
+    const HEADLINE_DURATION = 1.45;
+    const HEADLINE_EASE = 'power4.out';
+
+    const headlineTl = gsap.timeline({
+      defaults: {
+        duration: HEADLINE_DURATION,
+        ease: HEADLINE_EASE
+      }
+    });
+
+    headlineTl.addLabel('headlineReveal', 0);
+
+    headlineTl.fromTo('#h1',
+      {
+        clipPath: 'polygon(0% 100%, 100% 100%, 100% 100%, 0% 100%)',
+        webkitClipPath: 'polygon(0% 100%, 100% 100%, 100% 100%, 0% 100%)'
+      },
+      {
+        clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+        webkitClipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+        duration: HEADLINE_DURATION,
+        ease: HEADLINE_EASE
+      },
+      'headlineReveal'
+    );
+
+    headlineTl.to(HC,
+      {
+        yPercent: 0,
+        opacity: 1,
+        rotateX: 0,
+        scale: 1,
+        filter: 'blur(0px)',
+        duration: HEADLINE_DURATION,
+        ease: HEADLINE_EASE
+      },
+      'headlineReveal'
+    );
+
+    introTl.addLabel('headlineReveal', 0.75);
+    introTl.add(headlineTl, 'headlineReveal');
+
+    // 6. Supporting lead typography reveal (masked lines)
+    introTl.to('.hero-lead-line', {
+      yPercent: 0,
+      opacity: 1,
+      duration: 1.15,
+      stagger: 0.1,
+      ease: 'power3.out'
+    }, 1.1);
+
+    // 7. Status badge & bot identity telemetry
+    introTl.to('.hero-status-inner', {
+      yPercent: 0,
+      opacity: 1,
+      duration: 0.95,
+      ease: 'power3.out'
+    }, 1.3);
+
+    // 8. Hero prologue technical statement (masked lines)
+    introTl.to('.hero-prologue-line', {
+      yPercent: 0,
+      opacity: 1,
+      duration: 1.05,
+      stagger: 0.07,
+      ease: 'power3.out'
+    }, 1.45);
+
+    // 9. Scroll indicator CTA anchor
+    introTl.to('.hero-scroll-btn', {
+      yPercent: 0,
+      opacity: 1,
+      duration: 1.0,
+      ease: 'power3.out'
+    }, 1.55);
+
+    // 10. Clean up preloader and refresh ScrollTrigger
+    introTl.add(() => {
+      if (pre) pre.remove();
+      ScrollTrigger.refresh();
+    });
+  }
+
+  // Calibration Countdown
+  function startExperience() {
+    setupScroll();
+    if (FINE && !RM) initPointer();
+
+    if (RM) {
+      if (pre) pre.remove();
+      root.classList.remove('is-loading');
+      L.open = 1.0;
+      if (G) G.draw(0);
+      gsap.set('#h1', {
+        clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+        webkitClipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)'
+      });
+      gsap.set([
+        HC,
+        nav,
+        '.hero-meta-item',
+        '.hero-lead-line',
+        '.hero-status-inner',
+        '.hero-prologue-line',
+        '.hero-scroll-btn'
+      ], {
+        yPercent: 0,
+        opacity: 1,
+        rotateX: 0,
+        scale: 1,
+        filter: 'none'
+      });
+      ScrollTrigger.refresh();
+      return;
+    }
+
+    const state = { pct: 0 };
+    const pctEl = $('#pre-pct');
+    const statusEl = $('#pre-status');
+    const ringEl = $('#pre-reticle-ring');
+
+    const statusMessages = [
+      'KHỞI TẠO KHOANG ÂM THANH',
+      'HIỆU CHUẨN ĐƯỜNG TRUYỀN OPUS',
+      'ĐỒNG BỘ BỘ GIẢI MÃ ĐA NGUỒN',
+      'TỐI ƯU HÓA ĐỘNG CƠ STREAM JIT',
+      'ĐỘNG CƠ GECKO SẴN SÀNG'
+    ].map(normalizeVietnameseText);
+
+    gsap.to(state, {
+      pct: 100,
+      duration: 1.6,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        const val = Math.round(state.pct);
+        if (pctEl) pctEl.textContent = String(val).padStart(3, '0');
+        if (statusEl) {
+          const step = Math.min(Math.floor((val / 100) * statusMessages.length), statusMessages.length - 1);
+          statusEl.textContent = statusMessages[step];
+        }
+        if (ringEl) {
+          ringEl.style.transform = `rotate(${val * 3.6}deg)`;
+        }
+      },
+      onComplete: playIntro
+    });
+  }
+
+  root.classList.add('is-loading');
+  const readyPromise = Promise.race([
+    Promise.all([
+      document.fonts ? document.fonts.ready : Promise.resolve(),
+      document.readyState === 'complete' ? Promise.resolve() : new Promise((r) => window.addEventListener('load', r))
+    ]),
+    new Promise((r) => setTimeout(r, 2200))
+  ]);
+
+  readyPromise.then(startExperience);
+})();
+</script>
+</body>
+</html>

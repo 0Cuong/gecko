@@ -19,6 +19,7 @@ export interface QueuePlaybackController {
     destroy(): void;
     skip?(advance?: boolean): void;
     stop?(): void;
+    isPlaying?(): boolean;
 }
 
 export interface SendableTextChannel {
@@ -233,12 +234,18 @@ export class GuildQueue extends EventEmitter {
         return finished;
     }
 
+    private playingState = false;
+
     public setPlaying(state: boolean): void {
+        this.playingState = state;
         this.currentSong = state ? (this.songs[0] ?? null) : null;
     }
 
     public isPlaying(): boolean {
-        return this.player.state.status !== AudioPlayerStatus.Idle;
+        if (this.controller && typeof this.controller.isPlaying === "function") {
+            return this.controller.isPlaying();
+        }
+        return this.playingState || this.player.state.status !== AudioPlayerStatus.Idle;
     }
 
     public setLifecycle(state: PlayerLifecycleState): void {

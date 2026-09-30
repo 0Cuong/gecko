@@ -345,11 +345,21 @@ async function main(): Promise<void> {
             }
 
             if (req.url === "/" || req.url === "/index.html") {
+                const indexPath = nodePath.resolve(process.cwd(), "index.html");
+                if (existsSync(indexPath)) {
+                    const html = readFileSync(indexPath, "utf-8");
+                    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                    res.end(html);
+                    return;
+                }
+            }
+
+            if (req.url === "/" || req.url === "/index.html" || req.url === "/legacy" || req.url === "/dashboard") {
                 const heapUsedMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
                 const wsStatus = client.ws ? getDiscordStatusString(client.ws.status) : "disconnected";
-                const botUser = client.user?.tag || (isReady ? "Connected" : (hasToken ? `Connecting (${wsStatus})` : "Token Not Configured"));
+                const botUser = client.user?.tag || (isReady ? "Đã kết nối" : (hasToken ? `Đang kết nối (${wsStatus})` : "Chưa cấu hình Token"));
                 const statusBadgeColor = isReady ? "#22c55e" : (hasToken ? "#eab308" : "#f97316");
-                const statusText = isReady ? "ONLINE" : (hasToken ? `STANDBY (${wsStatus})` : "AWAITING BOT_TOKEN");
+                const statusText = isReady ? "TRỰC TUYẾN" : (hasToken ? `CHẾ ĐỘ CHỜ (${wsStatus})` : "CHỜ BOT_TOKEN");
 
                 const commandsList = Array.from(client.commands.values())
                     .map(cmd => `<div style="padding:10px 14px;background:#1e293b;border-radius:6px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
@@ -358,14 +368,14 @@ async function main(): Promise<void> {
                     </div>`).join("");
 
                 const html = `<!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gecko Discord Music Bot</title>
-    <meta name="description" content="A minimal, fast, stable, and lightweight Discord music engine and bot with built-in health monitoring.">
+    <meta name="description" content="Hệ thống và bot phát nhạc Discord tối giản, tốc độ cao, ổn định với công cụ giám sát sức khỏe tích hợp.">
     <meta property="og:title" content="Gecko Discord Music Bot">
-    <meta property="og:description" content="A minimal, fast, stable, and lightweight Discord music engine and bot with built-in health monitoring.">
+    <meta property="og:description" content="Hệ thống và bot phát nhạc Discord tối giản, tốc độ cao, ổn định với công cụ giám sát sức khỏe tích hợp.">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         body { background: #0b0f19; color: #f8fafc; padding: 32px 16px; display: flex; justify-content: center; }
@@ -400,46 +410,46 @@ async function main(): Promise<void> {
 
         ${!hasToken ? `
         <div class="alert">
-            <strong>Configuration Needed:</strong> Discord Bot Token is not set.<br/>
-            Open the <strong>Settings</strong> menu in AI Studio to set <code>BOT_TOKEN</code>.
+            <strong>Yêu cầu cấu hình:</strong> Chưa thiết lập Discord Bot Token.<br/>
+            Mở menu <strong>Settings</strong> trong AI Studio để đặt <code>BOT_TOKEN</code>.
         </div>
         ` : ""}
 
         <div class="stats-grid">
             <div class="stat-box">
-                <div class="label">Discord Status</div>
+                <div class="label">Trạng thái Discord</div>
                 <div class="value" style="font-size:14px;color:#f8fafc;">${escapeHtml(botUser)}</div>
             </div>
             <div class="stat-box">
-                <div class="label">Connected Guilds</div>
+                <div class="label">Máy chủ kết nối</div>
                 <div class="value">${client.guilds.cache.size}</div>
             </div>
             <div class="stat-box">
-                <div class="label">Active Queues</div>
+                <div class="label">Hàng đợi hoạt động</div>
                 <div class="value">${client.queues.size}</div>
             </div>
             <div class="stat-box">
-                <div class="label">Process Uptime</div>
+                <div class="label">Thời gian chạy</div>
                 <div class="value">${Math.floor(process.uptime())}s</div>
             </div>
             <div class="stat-box">
-                <div class="label">Memory (Heap)</div>
+                <div class="label">Bộ nhớ (Heap)</div>
                 <div class="value">${heapUsedMB} MB</div>
             </div>
             <div class="stat-box">
-                <div class="label">Commands</div>
+                <div class="label">Tổng số lệnh</div>
                 <div class="value">${client.commands.size}</div>
             </div>
         </div>
 
         <div class="card">
-            <h2 style="font-size:15px;font-weight:600;margin-bottom:14px;color:#e2e8f0;">Slash Commands (${client.commands.size})</h2>
-            ${commandsList || '<p style="color:#64748b;font-size:13px;">No slash commands loaded.</p>'}
+            <h2 style="font-size:15px;font-weight:600;margin-bottom:14px;color:#e2e8f0;">Danh sách lệnh Slash (${client.commands.size})</h2>
+            ${commandsList || '<p style="color:#64748b;font-size:13px;">Không có lệnh slash nào được tải.</p>'}
         </div>
 
         <div class="links">
-            <a href="/healthz">Health Check API (/healthz) &rarr;</a>
-            <a href="/metrics">Prometheus Metrics (/metrics) &rarr;</a>
+            <a href="/healthz">API kiểm tra sức khỏe (/healthz) &rarr;</a>
+            <a href="/metrics">Chỉ số Prometheus (/metrics) &rarr;</a>
         </div>
     </div>
 </body>

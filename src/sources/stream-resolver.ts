@@ -46,9 +46,9 @@ export async function resolvePlayableStream(track: TrackMetadata, options: { for
     const target = sourceInput(track); console.info(`[Stream] source=${track.source} id=${track.sourceId} engine=yt-dlp targetSource=${target.source}`);
     let extracted: AudioStreamResult;
     // TikTok CDN URLs are frequently bound to the extractor session and reject a
-    // second client (FFmpeg) with 403. Keep the authenticated HTTP request inside
-    // yt-dlp and pipe media bytes to FFmpeg instead of handing FFmpeg the signed URL.
-    const forcePipe = target.source === "tiktok";
+    // second client (FFmpeg) with 403. Also on retries (forceRefresh), force pipe extraction
+    // so FFmpeg receives raw audio chunks via stdin instead of re-requesting a failing CDN URL.
+    const forcePipe = target.source === "tiktok" || options.forceRefresh === true;
     try { extracted = await createAudioStream(target.url, { forceNoCache: options.forceRefresh === true || forcePipe, forcePipe }); } catch (error) { throw new Error(`Stream extraction failed for ${track.source}/${track.sourceId}: ${error instanceof Error ? error.message : String(error)}`); }
     validateExpiry(extracted.expiresAt); validateStream(track, target.source, extracted.url);
     if (extracted.type === "direct") {

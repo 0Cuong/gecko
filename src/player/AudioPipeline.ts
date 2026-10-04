@@ -1,11 +1,36 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import type { Readable } from "node:stream";
 import { createAudioResource, StreamType, type AudioResource } from "@discordjs/voice";
 
 const require = createRequire(import.meta.url);
 const bundledFfmpegPath = require("ffmpeg-static") as string | null;
-const FFMPEG_EXECUTABLE = process.env.FFMPEG_PATH || bundledFfmpegPath || "ffmpeg";
+
+/**
+ * Resolves the optimal FFmpeg binary.
+ * Prefers system FFmpeg (dynamically linked to host libc/OpenSSL) over static builds
+ * to prevent TLS/GnuTLS SIGSEGV crashes on HTTPS direct streams in container runtimes.
+ */
+export function resolveFfmpegExecutable(): string {
+    if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+
+    // Check if system ffmpeg exists and functions properly
+    try {
+        const check = spawnSync("ffmpeg", ["-version"], { stdio: "ignore", windowsHide: true, timeout: 1500 });
+        if (check.status === 0) {
+            return "ffmpeg";
+        }
+    } catch {}
+
+    // Fallback to bundled static binary if present
+    if (bundledFfmpegPath && existsSync(bundledFfmpegPath)) {
+        return bundledFfmpegPath;
+    }
+
+    return "ffmpeg";
+}
+
 const DEFAULT_STALL_TIMEOUT_MS = 20_000;
 
 export interface FfmpegUrlInput { url: string; headers?: Record<string, string>; }
@@ -67,7 +92,8 @@ export class AudioPipeline {
             : pipeArgs(filters, Boolean(options.isOggOpus && !filters.length), options.inputFormat);
 
         this.ffmpegSpawnedAt = Date.now();
-        this.ffmpeg = spawn(FFMPEG_EXECUTABLE, args, { stdio: [direct ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true });
+        const executable = resolveFfmpegExecutable();
+        this.ffmpeg = spawn(executable, args, { stdio: [direct ? "ignore" : "pipe", "pipe", "pipe"], windowsHide: true });
         if (!this.ffmpeg.stdout) throw new Error("FFmpeg did not expose stdout.");
 
         this.ffmpeg.once("error", this.onFfmpegError);
@@ -171,7 +197,45 @@ export class AudioPipeline {
     }
 }
 
-function base(): string[] { return ["-hide_banner", "-nostdin", "-loglevel", "warning", "-fflags", "+nobuffer+discardcorrupt", "-analyzeduration", "0", "-probesize", "32768"]; }
-function output(filters: readonly string[], copy: boolean): string[] { return copy ? ["-c:a", "copy", "-page_duration", "20000", "-flush_packets", "1", "-f", "ogg", "pipe:1"] : [...filters, "-c:a", "libopus", "-application", "audio", "-frame_duration", "20", "-b:a", "128k", "-vbr", "constrained", "-compression_level", "3", "-ar", "48000", "-ac", "2", "-page_duration", "20000", "-flush_packets", "1", "-f", "ogg", "pipe:1"]; }
-function directArgs(input: FfmpegUrlInput, filters: readonly string[], copy: boolean, format?: string): string[] { const args = [...base(), "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "2", "-rw_timeout", "15000000"]; if (input.headers && Object.keys(input.headers).length) args.push("-headers", `${Object.entries(input.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n")}\r\n`); if (format) args.push("-f", format); args.push("-i", input.url, "-vn", "-map", "0:a:0?"); return [...args, ...output(filters, copy)]; }
-function pipeArgs(filters: readonly string[], copy: boolean, format?: string): string[] { const args = base(); if (format) args.push("-f", format); args.push("-i", "pipe:0", "-vn", "-map", "0:a:0?"); return [...args, ...output(filters, copy)]; }
+function base(isDirect = false): string[] {
+    const args = [
+        "-hide_banner",
+        "-loglevel", "warning",
+        "-fflags", "+nobuffer+discardcorrupt",
+        "-analyzeduration", "500000",
+        "-probesize", "500000"
+    ];
+    if (isDirect) {
+        args.push("-nostdin");
+    }
+    return args;
+}
+
+function output(filters: readonly string[], copy: boolean): string[] {
+    return copy
+        ? ["-c:a", "copy", "-page_duration", "20000", "-flush_packets", "1", "-f", "ogg", "pipe:1"]
+        : [...filters, "-c:a", "libopus", "-application", "audio", "-frame_duration", "20", "-b:a", "128k", "-vbr", "constrained", "-compression_level", "3", "-ar", "48000", "-ac", "2", "-page_duration", "20000", "-flush_packets", "1", "-f", "ogg", "pipe:1"];
+}
+
+function directArgs(input: FfmpegUrlInput, filters: readonly string[], copy: boolean, format?: string): string[] {
+    const args = [
+        ...base(true),
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-rw_timeout", "15000000"
+    ];
+    if (input.headers && Object.keys(input.headers).length) {
+        args.push("-headers", `${Object.entries(input.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n")}\r\n`);
+    }
+    if (format) args.push("-f", format);
+    args.push("-i", input.url, "-vn", "-map", "0:a:0?");
+    return [...args, ...output(filters, copy)];
+}
+
+function pipeArgs(filters: readonly string[], copy: boolean, format?: string): string[] {
+    const args = base(false);
+    if (format) args.push("-f", format);
+    args.push("-i", "pipe:0", "-vn", "-map", "0:a:0?");
+    return [...args, ...output(filters, copy)];
+}

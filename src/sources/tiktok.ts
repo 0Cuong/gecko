@@ -1,4 +1,3 @@
-import { request } from "undici";
 import ytdl, { isTikTokUrl } from "./ytdlp-wrapper.js";
 import type { SourceResolver, TrackMetadata, TrackResolveOptions } from "./resolver.js";
 import { LRUCache } from "../utils/cache.js";
@@ -41,9 +40,16 @@ export class TikTokResolver implements SourceResolver {
     private async expandShortUrl(url: string): Promise<string> {
         await securityManager.assertPublicHttpUrl(url);
         try {
-            const response = await request(url, { method: "GET", headersTimeout: 5_000, bodyTimeout: 5_000 });
-            const finalUrl = typeof response.headers.location === "string" ? new URL(response.headers.location, url).toString() : url;
-            response.body.dump();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5_000);
+            const response = await fetch(url, {
+                method: "GET",
+                redirect: "manual",
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            const loc = response.headers.get("location");
+            const finalUrl = typeof loc === "string" && loc ? new URL(loc, url).toString() : url;
             return finalUrl;
         } catch (error) { throw new Error(`TikTok short URL expansion failed: ${error instanceof Error ? error.message : String(error)}`); }
     }

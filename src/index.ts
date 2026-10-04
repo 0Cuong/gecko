@@ -1,3 +1,4 @@
+import "./polyfill.js";
 import { existsSync, readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";

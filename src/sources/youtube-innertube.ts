@@ -1,3 +1,4 @@
+import "../polyfill.js";
 import { request, Agent } from "undici";
 import type { TrackMetadata } from "./resolver.js";
 import { LRUCache } from "../utils/cache.js";

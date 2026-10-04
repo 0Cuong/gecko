@@ -266,6 +266,7 @@ function getAutoCookiePath(): string | null {
 const FAST_GLOBAL_FLAGS = [
     "--ignore-config",
     "--no-warnings",
+    "--js-runtimes", "node",
     "--socket-timeout", "8",
     "--retries", "1",
     "--extractor-retries", "1"
@@ -439,9 +440,16 @@ export const exec = (url: string, opts: Record<string, any> = {}, spawnOpts: Rec
     return spawn(cmd, buildArgs(url, opts), { windowsHide: true, ...spawnOpts });
 };
 
-export async function updateYtdlBinary(): Promise<void> {
+let lastBinaryUpdateMs = 0;
+const BINARY_UPDATE_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+export async function updateYtdlBinary(force = false): Promise<void> {
+    if (!force && Date.now() - lastBinaryUpdateMs < BINARY_UPDATE_COOLDOWN_MS) {
+        return;
+    }
     if (updatePromise) return updatePromise;
 
+    lastBinaryUpdateMs = Date.now();
     updatePromise = (async () => {
         try {
             await downloadExecutable();
@@ -763,18 +771,20 @@ export async function createAudioStream(
         }
     }
 
-    // 2. FORCE PIPE DIRECTLY IF REQUESTED
+    // 2. FORCE PIPE DIRECTLY IF REQUESTED (TikTok or forced pipe with stream validation)
     if (options.forcePipe) {
         const streamArgs = buildStreamArgs(url, options);
         const proc = execStreamProcess(url, streamArgs, options);
+        const validated = await validateStreamProcess(proc, url);
         return {
             type: "pipe",
-            stream: proc.stdout,
+            stream: validated.stream,
             process: proc,
         };
     }
 
     // 3. SINGLE-PASS METADATA & DIRECT URL RESOLUTION
+    let extractionError: YTDPLError | null = null;
     try {
         const info = await ytdl(url, { ...options, dumpSingleJson: true });
         const direct = extractDirectAudioStream(info);
@@ -800,17 +810,115 @@ export async function createAudioStream(
         }
     } catch (err: any) {
         invalidateStreamCache(url);
+        extractionError = err instanceof YTDPLError ? err : classifyError(err, "", url);
+
+        // If this is a bot detection or fatal/non-retryable error, DO NOT blindly fall back to pipe streaming
+        // because running the same URL through yt-dlp pipe will fail for the exact same reason!
+        if (["BOT_DETECTION", "VIDEO_UNAVAILABLE", "LOGIN_REQUIRED", "NON_RETRYABLE", "TIKTOK_BLOCKED", "LIVE_ENDED"].includes(extractionError.code)) {
+            // Attempt fallback player client if it's YouTube bot detection
+            if (extractionError.code === "BOT_DETECTION" && url.includes("youtube.com") && !options._triedFallback) {
+                try {
+                    const fallbackArgs = "youtube:player_client=mweb,tv;player_skip=configs";
+                    const fallbackInfo = await ytdl(url, { ...options, dumpSingleJson: true, extractorArgs: fallbackArgs, _triedFallback: true });
+                    const direct = extractDirectAudioStream(fallbackInfo);
+                    if (direct && direct.url) {
+                        return {
+                            type: "direct",
+                            stream: null,
+                            process: null,
+                            url: direct.url,
+                            headers: direct.headers,
+                            ffmpegArgs: direct.ffmpegArgs,
+                            expiresAt: direct.expiresAt * 1000,
+                        };
+                    }
+                } catch (fallbackErr: any) {
+                    extractionError = fallbackErr instanceof YTDPLError ? fallbackErr : classifyError(fallbackErr, "", url);
+                }
+            }
+            throw extractionError;
+        }
     }
 
-    // 4. FALLBACK TO STDOUT PIPE ONLY ON DIRECT EXTRACTION FAILURE
+    // 4. FALLBACK TO STDOUT PIPE ONLY ON DIRECT EXTRACTION FORMAT FAILURE (Validated)
     const streamArgs = buildStreamArgs(url, { ...options, _isRecovery: true });
     const proc = execStreamProcess(url, streamArgs, options);
+    try {
+        const validated = await validateStreamProcess(proc, url);
+        return {
+            type: "pipe",
+            stream: validated.stream,
+            process: proc,
+        };
+    } catch (streamErr) {
+        throw extractionError || streamErr;
+    }
+}
 
-    return {
-        type: "pipe",
-        stream: proc.stdout,
-        process: proc,
-    };
+export function validateStreamProcess(
+    proc: ChildProcess,
+    url: string,
+    timeoutMs = 10_000
+): Promise<{ stream: Readable; process: ChildProcess }> {
+    return new Promise((resolve, reject) => {
+        if (!proc.stdout) {
+            safeKill(proc, "no-stdout");
+            return reject(new YTDPLError("Extractor process did not expose stdout", "EXTRACT_FAILED"));
+        }
+
+        let settled = false;
+        let timer: NodeJS.Timeout | null = null;
+
+        const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            proc.stdout?.removeListener("data", onFirstData);
+            proc.removeListener("exit", onEarlyExit);
+            proc.removeListener("error", onEarlyError);
+        };
+
+        const onFirstData = (chunk: Buffer) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            // Put the initial chunk back into the stream buffer so FFmpeg receives the complete stream
+            proc.stdout!.unshift(chunk);
+            resolve({ stream: proc.stdout!, process: proc });
+        };
+
+        const onEarlyExit = (code: number | null, signal: string | null) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            const stderr = (proc as any)._capturedStderr || "";
+            const err = new Error(stderr.trim() || `Extractor process exited prematurely with code ${code} / signal ${signal}`);
+            const classified = classifyError(err, stderr, url);
+            safeKill(proc, "early-exit");
+            reject(classified);
+        };
+
+        const onEarlyError = (err: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            const stderr = (proc as any)._capturedStderr || "";
+            const classified = classifyError(err, stderr, url);
+            safeKill(proc, "early-error");
+            reject(classified);
+        };
+
+        timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            safeKill(proc, "startup-timeout");
+            reject(new YTDPLError(`Audio stream extraction timed out after ${timeoutMs}ms`, "TIMEOUT"));
+        }, timeoutMs);
+        timer.unref();
+
+        proc.stdout.once("data", onFirstData);
+        proc.once("exit", onEarlyExit);
+        proc.once("error", onEarlyError);
+    });
 }
 
 export async function preloadTrackStream(url: string, options: Record<string, any> = {}): Promise<void> {
@@ -858,12 +966,14 @@ export function execStreamProcess(
             if (stderrText.length < 262_144) {
                 stderrText += stderrDecoder.write(chunk);
             }
+            (proc as any)._capturedStderr = stderrText;
         });
 
         // `close` is emitted after stdout has closed, which is too late to turn a
         // failed extractor into a stream error. Propagate at `exit` so FFmpeg and
         // the controller receive a recoverable failure instead of a false EOF.
         proc.once("exit", (code: number | null, signal: string | null) => {
+            (proc as any)._capturedStderr = stderrText;
             if (isSettled || (proc as any)._consumerClosed || (proc as any)._isExpectedKilled || code === 0 || code === null) return;
             const classified = classifyError(new Error(stderrText.trim() || `Exit ${code} / Signal ${signal}`), stderrText, url);
             if (classified.code !== "STREAM_CONSUMER_CLOSED" && proc.stdout && !proc.stdout.destroyed) {
@@ -875,6 +985,7 @@ export function execStreamProcess(
             if (isSettled) return;
             isSettled = true;
             stderrText += stderrDecoder.end();
+            (proc as any)._capturedStderr = stderrText;
             const lifetime = Date.now() - startTime;
 
             if ((proc as any)._consumerClosed || (proc as any)._isExpectedKilled) {
@@ -893,7 +1004,9 @@ export function execStreamProcess(
                     proc.stdout.destroy(classified);
                 }
 
-                if (classified.code === "UPDATE_REQUIRED" || classified.code === "BOT_DETECTION") {
+                // ONLY update binary if yt-dlp explicitly requested UPDATE_REQUIRED.
+                // NEVER update on BOT_DETECTION.
+                if (classified.code === "UPDATE_REQUIRED") {
                     void updateYtdlBinary().catch((error: unknown) => {
                         console.warn("[Music][WARN] yt-dlp update after stream crash failed", error instanceof Error ? error.message : String(error));
                     });

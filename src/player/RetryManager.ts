@@ -1,4 +1,4 @@
-export type RetryStrategy = "stream-refresh" | "network" | "rate-limit" | "ffmpeg" | "authentication" | "fatal";
+export type RetryStrategy = "stream-refresh" | "network" | "rate-limit" | "ffmpeg" | "authentication" | "bot-detection" | "fatal";
 
 export interface RetryDecision {
     retry: boolean;
@@ -14,14 +14,19 @@ export const MAX_STREAM_RETRY = 3;
 export const MAX_FFMPEG_RESTART = 2;
 
 const FATAL_ERROR_REGEX = /(?:\b(?:400|404|410)\b|age[- ]restricted|private|deleted|invalid (?:url|media)|malformed|copyright|removed by user|(?:video|resource|media) unavailable|geo-restricted|live stream has ended)/i;
-const AUTH_ERROR_REGEX = /(?:\b401\b|login required|sign in to confirm|authentication|authorization)/i;
+const BOT_DETECTION_REGEX = /(?:bot[- ]detection|bot verification|confirm you['’]re not a bot|sign in to confirm|po_token|sabr|n-sig|captcha)/i;
+const AUTH_ERROR_REGEX = /(?:\b401\b|login required|authentication|authorization)/i;
 const STREAM_REFRESH_REGEX = /(?:\b403\b|forbidden|expired|signature|access denied|media validation)/i;
 const RATE_LIMIT_REGEX = /(?:\b429\b|rate limit|too many requests)/i;
 const FFMPEG_REGEX = /(?:ffmpeg|invalid data found|decoder|demux|conversion failed|exited [1-9])/i;
 const NETWORK_REGEX = /(?:\b(?:500|502|503|504)\b|econnreset|epipe|etimedout|econnrefused|enotfound|eai_again|network|socket|timeout|pipe closed|premature close|connection reset|broken pipe)/i;
 
 export function classifyErrorStrategy(error: Error): { strategy: RetryStrategy; reason: string } {
+    const code = (error as any)?.code || "";
     const message = error.message || "";
+    if (code === "BOT_DETECTION" || BOT_DETECTION_REGEX.test(message)) {
+        return { strategy: "bot-detection", reason: "Host anti-bot verification or captcha challenge" };
+    }
     if (FATAL_ERROR_REGEX.test(message)) return { strategy: "fatal", reason: "Invalid, removed, or permanently unavailable media" };
     if (AUTH_ERROR_REGEX.test(message)) return { strategy: "authentication", reason: "Source session or authentication is required" };
     if (RATE_LIMIT_REGEX.test(message)) return { strategy: "rate-limit", reason: "Source rate limit" };
@@ -51,6 +56,14 @@ export class RetryManager {
         const { strategy, reason } = classifyErrorStrategy(error);
 
         if (strategy === "fatal") return this.noRetry(strategy, reason);
+
+        if (strategy === "bot-detection") {
+            // Anti-bot detection is an IP or credential challenge from the host.
+            // Allow at most 1 fallback re-extraction attempt with an alternative source/client, then fail boundedly.
+            if (this.attempts >= 1) return this.noRetry(strategy, reason);
+            this.attempts += 1;
+            return this.decision(strategy, reason, this.attempts, 1_000, true);
+        }
 
         if (strategy === "ffmpeg") {
             if (this.ffmpegAttempts >= MAX_FFMPEG_RESTART) return this.noRetry(strategy, reason);

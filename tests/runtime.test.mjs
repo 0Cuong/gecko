@@ -49,6 +49,16 @@ assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, tru
 assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, true);
 assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, false, 'FFmpeg restarts must be bounded');
 
+const botRetry = new RetryManager();
+const botErr = new Error('Sign in to confirm you’re not a bot');
+(botErr as any).code = 'BOT_DETECTION';
+const botDecision1 = botRetry.next('bot-track', botErr);
+assert.equal(botDecision1.strategy, 'bot-detection', 'bot-detection errors must be classified accurately');
+assert.equal(botDecision1.retry, true, 'bot-detection allows at most one fallback re-extraction attempt');
+assert.equal(botDecision1.refreshStream, true, 'bot-detection must force fresh stream on retry');
+const botDecision2 = botRetry.next('bot-track', botErr);
+assert.equal(botDecision2.retry, false, 'bot-detection must not create infinite retry loop');
+
 // Volume normalization and event verification
 const volQueue = new GuildQueue('vol-channel', 1.0);
 let capturedVol = 0;

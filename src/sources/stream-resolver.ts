@@ -49,13 +49,43 @@ export async function resolvePlayableStream(track: TrackMetadata, options: { for
     // second client (FFmpeg) with 403. Also on retries (forceRefresh), force pipe extraction
     // so FFmpeg receives raw audio chunks via stdin instead of re-requesting a failing CDN URL.
     const forcePipe = target.source === "tiktok" || options.forceRefresh === true;
-    try { extracted = await createAudioStream(target.url, { forceNoCache: options.forceRefresh === true || forcePipe, forcePipe }); } catch (error) { throw new Error(`Stream extraction failed for ${track.source}/${track.sourceId}: ${error instanceof Error ? error.message : String(error)}`); }
+    try {
+        extracted = await createAudioStream(target.url, { forceNoCache: options.forceRefresh === true || forcePipe, forcePipe });
+    } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        const code = (error as any)?.code;
+
+        // If Spotify track failed on YouTube due to bot-detection or extraction failure,
+        // attempt an on-demand fallback to the next candidate
+        if (track.source === "spotify" && (code === "BOT_DETECTION" || (error as any)?.name === "YTDPLError")) {
+            const resolver = defaultResolverManager.getResolvers().find((item) => item.name === "SpotifyResolver") as any;
+            if (resolver?.recordFailedYouTubeId && target.url) {
+                resolver.recordFailedYouTubeId(target.url);
+                try {
+                    const remapped = await resolver.resolveTrackOnDemand(track);
+                    Object.assign(track, remapped);
+                    const newTarget = sourceInput(track);
+                    if (newTarget.url !== target.url) {
+                        console.info(`[Stream] Falling back to alternative YouTube candidate for Spotify track: ${newTarget.url}`);
+                        extracted = await createAudioStream(newTarget.url, { forceNoCache: true });
+                    }
+                } catch {}
+            }
+        }
+
+        if (!extracted!) {
+            const wrapped = new Error(`Stream extraction failed for ${track.source}/${track.sourceId}: ${err.message}`);
+            if (code) (wrapped as any).code = code;
+            (wrapped as any).cause = err;
+            throw wrapped;
+        }
+    }
     validateExpiry(extracted.expiresAt); validateStream(track, target.source, extracted.url);
     if (extracted.type === "direct") {
         if (!extracted.url) throw new Error("Direct stream extraction returned no media URL.");
         Object.assign(track, { streamUrl: extracted.url, audioUrl: extracted.url, directUrl: extracted.url, streamType: "direct", expiresAt: extracted.expiresAt, engine: "yt-dlp", isLazy: false });
         const { Readable } = await import("node:stream"); return { type: "direct", source: target.source, stream: Readable.from([]), mediaUrl: extracted.url, headers: extracted.headers, expiresAt: extracted.expiresAt, engine: "yt-dlp", cleanup: () => undefined };
     }
-    if (!extracted.stream) throw new Error("Pipe stream extraction returned no stream."); Object.assign(track, { streamType: "pipe", engine: "yt-dlp", isLazy: false });
+    if (!extracted.stream || (extracted.stream as any).destroyed) throw new Error("Pipe stream extraction returned no stream."); Object.assign(track, { streamType: "pipe", engine: "yt-dlp", isLazy: false });
     return { type: "pipe", source: target.source, stream: extracted.stream, engine: "yt-dlp", cleanup: () => { extracted.stream?.destroy(); safeKill(extracted.process, "playback-pipe-cleanup"); } };
 }

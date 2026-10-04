@@ -85,7 +85,17 @@ export class AudioPipeline {
 
     public constructor(input: Readable | FfmpegUrlInput, private readonly options: AudioPipelineOptions = {}) {
         const direct = !(input as Readable).pipe;
-        if (!direct) this.sourceStream = input as Readable;
+        if (!direct) {
+            this.sourceStream = input as Readable;
+            if ((this.sourceStream as any).destroyed || (this.sourceStream as any).readableEnded) {
+                throw new Error("AudioPipeline received an already closed or destroyed stream.");
+            }
+        } else {
+            const urlInput = input as FfmpegUrlInput;
+            if (!urlInput?.url || typeof urlInput.url !== "string" || !urlInput.url.trim().startsWith("http")) {
+                throw new Error("AudioPipeline received an invalid direct media URL.");
+            }
+        }
         const filters = options.filterArgs ?? [];
         const args = direct
             ? directArgs(input as FfmpegUrlInput, filters, Boolean(options.isOggOpus && !filters.length), options.inputFormat)

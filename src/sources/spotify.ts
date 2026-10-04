@@ -81,6 +81,18 @@ export type SpotifyErrorCode =
     | "CIRCUIT_OPEN"
     | "DIRECT_PLAYBACK_UNAVAILABLE";
 
+export const failedYouTubeIds = new Set<string>();
+export function recordFailedYouTubeId(urlOrId: string): void {
+    if (!urlOrId) return;
+    const match = /(?:v=|\/shorts\/|\/embed\/|youtu\.be\/)([\w-]{11})/.exec(urlOrId);
+    const id = match ? match[1] : urlOrId.trim();
+    if (id) failedYouTubeIds.add(id);
+    if (failedYouTubeIds.size > 500) {
+        const first = failedYouTubeIds.values().next().value;
+        if (first) failedYouTubeIds.delete(first);
+    }
+}
+
 const SPOTIFY_URL_REGEX =
     /^(?:https?:\/\/(?:open|play)\.spotify\.com\/(?:intl-[a-z]{2,8}(?:-[a-z]{2,8})?\/|embed\/)*(track|album|playlist|episode|show)\/([a-zA-Z0-9]{15,32})|spotify:(track|album|playlist|episode|show):([a-zA-Z0-9]{15,32}))/i;
 const SHORT_LINK_REGEX =
@@ -1969,6 +1981,11 @@ export class SpotifyResolver implements SourceResolver {
             const candTitle = candidate.title || "";
             const candAuthor = candidate.author || (candidate as any).channel || (candidate as any).uploader || "Unknown";
             const candChannel = String((candidate as any).channel || (candidate as any).uploader || candAuthor);
+
+            if (failedYouTubeIds.has(candidateId)) {
+                this.logger.info(`[YouTubeSearch] Candidate [ID: ${candidateId}] skipped: previously flagged with bot-detection or stream failure.`);
+                continue;
+            }
 
             if (!isValidCandidate(candidate, meta, this.logger)) {
                 this.logger.debug(`[YouTubeSearch] Candidate [ID: ${candidateId}] "${candTitle}" by "${candAuthor}" HARD REJECTED by candidate filter`);

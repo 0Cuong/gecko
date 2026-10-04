@@ -2429,11 +2429,30 @@ a {
   }
   initCommandsDirectory();
 
+  // Dynamic Backend Base URL resolution for Static Web (GitHub Pages / Cloudflare Pages)
+  function getBackendBaseUrl() {
+    try {
+      const param = new URLSearchParams(window.location.search).get('backend');
+      if (param && param.trim()) {
+        const clean = param.trim().replace(/\/+$/, '');
+        localStorage.setItem('gecko_backend_url', clean);
+        return clean;
+      }
+      const stored = localStorage.getItem('gecko_backend_url');
+      if (stored && stored.trim()) return stored.trim().replace(/\/+$/, '');
+    } catch {}
+    if (typeof window.GECKO_BACKEND_URL === 'string' && window.GECKO_BACKEND_URL.trim()) {
+      return window.GECKO_BACKEND_URL.trim().replace(/\/+$/, '');
+    }
+    return '';
+  }
+
   // Live Telemetry Polling from /healthz
   async function pollTelemetry() {
+    const apiBase = getBackendBaseUrl();
     try {
-      const res = await fetch('/healthz');
-      if (!res.ok) return;
+      const res = await fetch(`${apiBase}/healthz`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
 
       const discordEl = $('#stat-discord');
@@ -2475,8 +2494,40 @@ a {
         }
       }
     } catch {
-      // Offline fallback: keep pre-rendered values
+      // Offline fallback: check if running on a static host without remote backend configured
+      const isStaticHost = window.location.hostname.includes('github.io') ||
+                           window.location.hostname.includes('pages.dev') ||
+                           window.location.protocol === 'file:';
+      const heroBadge = $('#hero-badge');
+      const heroStatusText = $('#hero-status-text');
+      if (isStaticHost && !apiBase && heroBadge && heroStatusText) {
+        heroBadge.className = 'status-badge standby';
+        heroStatusText.textContent = 'WEB TĨNH (NHẤP ĐỂ KẾT NỐI BACKEND)';
+        heroBadge.style.cursor = 'pointer';
+        heroBadge.title = 'Nhấp để kết nối tới Cloud Backend 24/7 của bạn';
+      }
     }
+  }
+
+  // Allow clicking badge on static host to quickly connect to a remote backend
+  const heroBadgeEl = $('#hero-badge');
+  if (heroBadgeEl) {
+    heroBadgeEl.addEventListener('click', () => {
+      const current = getBackendBaseUrl();
+      const entered = window.prompt(
+        'Nhập URL Backend 24/7 của bot (ví dụ: https://gecko-bot.onrender.com hoặc https://your-server.railway.app):',
+        current
+      );
+      if (entered !== null) {
+        const cleaned = entered.trim().replace(/\/+$/, '');
+        if (cleaned) {
+          localStorage.setItem('gecko_backend_url', cleaned);
+        } else {
+          localStorage.removeItem('gecko_backend_url');
+        }
+        pollTelemetry();
+      }
+    });
   }
   pollTelemetry();
   setInterval(pollTelemetry, 10000);

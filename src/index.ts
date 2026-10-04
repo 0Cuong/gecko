@@ -14,6 +14,8 @@ import { metrics } from "./utils/metrics.js";
 import readyHandler from "./events/ready.js";
 import interactionHandler from "./events/interactionCreate.js";
 import voiceStateUpdateHandler from "./events/voiceStateUpdate.js";
+import { handleControlCenterApi } from "./control-center/api.js";
+import { addControlLog } from "./control-center/logger.js";
 
 export interface ProjectIdentity {
     readonly brand: string;
@@ -278,11 +280,29 @@ async function main(): Promise<void> {
     const client = new GeckoClient();
     client.config = config;
 
-    const port = Number(process.env.PORT) || 3000;
-    const server = http.createServer((req, res) => {
+    const port = Number(process.env.PORT) === 8080 ? 3000 : (Number(process.env.PORT) || 3000);
+    const server = http.createServer(async (req, res) => {
         try {
+            // 1. Control Center REST API & Realtime SSE
+            const handledApi = await handleControlCenterApi(req, res, client);
+            if (handledApi) return;
+            // Handle OPTIONS preflight for public health/metrics
+            if (req.method === "OPTIONS" && (req.url === "/healthz" || req.url === "/metrics")) {
+                res.writeHead(204, {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                    "Access-Control-Max-Age": "86400"
+                });
+                res.end();
+                return;
+            }
+
             if (req.url === "/metrics") {
-                res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
+                res.writeHead(200, {
+                    "Content-Type": "text/plain; version=0.0.4",
+                    "Access-Control-Allow-Origin": "*"
+                });
                 const promMetrics = metrics.toPrometheusFormat();
 
                 const customMetrics = [
@@ -339,7 +359,12 @@ async function main(): Promise<void> {
                     startupState: isReady ? "ready" : "starting"
                 };
 
-                res.writeHead(200, { "Content-Type": "application/json" });
+                res.writeHead(200, {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                });
                 res.end(JSON.stringify(healthPayload));
                 return;
             }
@@ -498,34 +523,57 @@ async function main(): Promise<void> {
 
     client.on(Events.ShardDisconnect, (event, shardId) => {
         console.warn(`[Gecko:Gateway] Shard ${shardId} disconnected (Code: ${event.code}).`);
+        addControlLog("warn", "GATEWAY_DISCONNECT", `Mất kết nối Shard ${shardId} (Mã lỗi: ${event.code})`);
     });
 
     client.on(Events.ShardReconnecting, (shardId) => {
         console.info(`[Gecko:Gateway] Shard ${shardId} reconnecting to Discord Gateway...`);
+        addControlLog("info", "GATEWAY_RECONNECTING", `Shard ${shardId} đang tự động kết nối lại Gateway...`);
     });
 
     client.on(Events.ShardResume, (shardId, replayedEvents) => {
         console.info(`[Gecko:Gateway] Shard ${shardId} resumed connection. Replayed ${replayedEvents} events.`);
+        addControlLog("success", "GATEWAY_RESUMED", `Shard ${shardId} đã phục hồi phiên kết nối (${replayedEvents} sự kiện).`);
     });
 
     client.on(Events.Error, (err: Error) => {
         totalErrorCount++;
         console.error(`[Gecko:Gateway] WebSocket Client Error: ${err.message}`);
+        addControlLog("error", "CLIENT_ERROR", `Lỗi Discord Client: ${err.message}`);
+    });
+
+    client.on(Events.GuildCreate, (guild) => {
+        addControlLog("info", "GUILD_JOINED", `Bot đã tham gia máy chủ mới: ${guild.name} (${guild.id})`, {
+            memberCount: guild.memberCount
+        });
+    });
+
+    client.on(Events.GuildDelete, (guild) => {
+        addControlLog("warn", "GUILD_LEFT", `Bot đã rời khỏi máy chủ: ${guild.name} (${guild.id})`);
     });
 
     client.once(Events.ClientReady, async (c) => {
         try {
             isReady = true;
             console.info(`[Gecko:Ready] Bot successfully logged in as ${c.user.tag} in ${Date.now() - startupTimestamp}ms.`);
+            addControlLog("success", "GATEWAY_READY", `Bot đã trực tuyến và kết nối Discord: ${c.user.tag}`, {
+                id: c.user.id,
+                tag: c.user.tag,
+                guilds: c.guilds.cache.size
+            });
             await readyHandler(c as GeckoClient);
         } catch (err: unknown) {
             totalErrorCount++;
             const msg = err instanceof Error ? err.stack || err.message : String(err);
             console.error(`[Gecko:Event:Ready] Error in readyHandler: ${msg}`);
+            addControlLog("error", "READY_HANDLER_ERROR", `Lỗi khởi tạo readyHandler: ${msg}`);
         }
     });
 
     client.on(Events.InteractionCreate, async (interaction) => {
+        if (interaction.isChatInputCommand()) {
+            addControlLog("info", "COMMAND_EXECUTED", `Thực thi lệnh /${interaction.commandName} bởi @${interaction.user.tag} trong #${(interaction.channel as any)?.name || "DM"}`);
+        }
         try {
             await interactionHandler(interaction, client);
         } catch (err: unknown) {

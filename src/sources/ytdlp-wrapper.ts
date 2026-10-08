@@ -316,9 +316,9 @@ function injectNetworkingAndCookies(args: string[], url: string, opts: Record<st
 
     if (isTikTok) args.push("--extractor-args", "tiktok:api_hostname=api-h2.tiktok.com;prefer_webpage=false");
 
-    // YouTube currently applies bot/SABR restrictions to several web clients.
-    // The Android client is the preferred server-side playback client because it
-    // avoids the web flow that is producing LOGIN_REQUIRED/BOT_DETECTION on Render.
+    // YouTube playback is currently sensitive to player-client/PO-token policy.
+    // Start with Android for compatibility, while createAudioStream provides explicit
+    // fallbacks for clients that remain playable without a PO token.
     const hasExplicitExtractorArgs = Boolean(opts.extractorArgs || opts["extractor-args"]);
     const isYouTube = /(?:youtube\.com|youtu\.be)\//i.test(url);
     if (isYouTube && !hasExplicitExtractorArgs) {
@@ -828,19 +828,42 @@ export async function createAudioStream(
             // Attempt fallback player client if it's YouTube bot detection
             if (extractionError.code === "BOT_DETECTION" && url.includes("youtube.com") && !options._triedFallback) {
                 try {
-                    const fallbackArgs = "youtube:player_client=mweb,tv;player_skip=configs";
-                    const fallbackInfo = await ytdl(url, { ...options, dumpSingleJson: true, extractorArgs: fallbackArgs, _triedFallback: true });
-                    const direct = extractDirectAudioStream(fallbackInfo);
-                    if (direct && direct.url) {
-                        return {
-                            type: "direct",
-                            stream: null,
-                            process: null,
-                            url: direct.url,
-                            headers: direct.headers,
-                            ffmpegArgs: direct.ffmpegArgs,
-                            expiresAt: direct.expiresAt * 1000,
-                        };
+                    const fallbackClients = [
+                        "tv",
+                        "web_embedded",
+                        "android_vr",
+                    ];
+
+                    for (const playerClient of fallbackClients) {
+                        try {
+                            const fallbackArgs = "youtube:player_client=" + playerClient + ";player_skip=configs";
+                            console.info("[Stream] YouTube playback fallback client=" + playerClient + " video=" + url);
+                            const fallbackInfo = await ytdl(url, {
+                                ...options,
+                                dumpSingleJson: true,
+                                forceNoCache: true,
+                                extractorArgs: fallbackArgs,
+                                _triedFallback: true,
+                            });
+                            const direct = extractDirectAudioStream(fallbackInfo);
+                            if (direct && direct.url) {
+                                console.info("[Stream] YouTube playback recovered with client=" + playerClient);
+                                return {
+                                    type: "direct",
+                                    stream: null,
+                                    process: null,
+                                    url: direct.url,
+                                    headers: direct.headers,
+                                    ffmpegArgs: direct.ffmpegArgs,
+                                    expiresAt: direct.expiresAt * 1000,
+                                };
+                            }
+                        } catch (fallbackError: any) {
+                            extractionError = fallbackError instanceof YTDPLError
+                                ? fallbackError
+                                : classifyError(fallbackError, "", url);
+                            console.warn("[Stream] YouTube fallback client=" + playerClient + " failed: " + extractionError.code);
+                        }
                     }
                 } catch (fallbackErr: any) {
                     extractionError = fallbackErr instanceof YTDPLError ? fallbackErr : classifyError(fallbackErr, "", url);

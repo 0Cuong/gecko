@@ -135,7 +135,7 @@ let isIntegrityVerified = false;
 let integrityStatusString = "unverified";
 const startupTimestamp = Date.now();
 
-async function probeDiscordConnectivity(): Promise<void> {
+async function probeDiscordConnectivity(botToken?: string): Promise<void> {
     const hostname = "gateway.discord.gg";
 
     try {
@@ -179,6 +179,60 @@ async function probeDiscordConnectivity(): Promise<void> {
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[Gecko:NetProbe] Discord HTTPS /gateway probe failed: ${message}`);
+    }
+
+    if (botToken) {
+        try {
+            const response = await fetch("https://discord.com/api/v10/gateway/bot", {
+                signal: AbortSignal.timeout(10_000),
+                headers: {
+                    "user-agent": "Gecko/1.0 authenticated-network-probe",
+                    "authorization": `Bot ${botToken}`
+                }
+            });
+            console.info(`[Gecko:NetProbe] Discord HTTPS /gateway/bot responded with HTTP ${response.status}.`);
+            await response.arrayBuffer();
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[Gecko:NetProbe] Discord HTTPS /gateway/bot probe failed: ${message}`);
+        }
+    }
+
+    try {
+        const socket = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
+        await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = (message: string, level: "info" | "warn") => {
+                if (settled) return;
+                settled = true;
+                try { socket.close(1000, "network probe complete"); } catch {}
+                if (level === "info") console.info(`[Gecko:NetProbe] ${message}`);
+                else console.warn(`[Gecko:NetProbe] ${message}`);
+                resolve();
+            };
+
+            const timeout = setTimeout(() => {
+                finish("Discord Gateway WebSocket handshake timed out after 8 seconds.", "warn");
+            }, 8_000);
+
+            socket.addEventListener("open", () => {
+                clearTimeout(timeout);
+                finish("Discord Gateway WebSocket handshake succeeded.", "info");
+            }, { once: true });
+
+            socket.addEventListener("error", () => {
+                clearTimeout(timeout);
+                finish("Discord Gateway WebSocket handshake failed.", "warn");
+            }, { once: true });
+
+            socket.addEventListener("close", () => {
+                clearTimeout(timeout);
+                if (!settled) finish("Discord Gateway WebSocket closed before handshake completed.", "warn");
+            }, { once: true });
+        });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Gecko:NetProbe] Discord Gateway WebSocket probe could not start: ${message}`);
     }
 }
 
@@ -343,7 +397,8 @@ async function main(): Promise<void> {
     client.config = config;
 
     client.on(Events.Debug, (message) => {
-        console.info(`[Gecko:DiscordDebug] ${message}`);
+        const safeMessage = message.replace(/(Provided token:\s*).*/i, "$1[REDACTED]");
+        console.info(`[Gecko:DiscordDebug] ${safeMessage}`);
     });
     client.on(Events.Warn, (message) => {
         console.warn(`[Gecko:DiscordWarn] ${message}`);
@@ -740,7 +795,7 @@ async function main(): Promise<void> {
     process.on("SIGTERM", () => void shutdown(0));
 
     if (hasToken && config.token) {
-        await probeDiscordConnectivity();
+        await probeDiscordConnectivity(config.token);
 
         discordLoginWatchdog = setTimeout(() => {
             if (isReady || shutdownStarted) return;

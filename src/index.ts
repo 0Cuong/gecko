@@ -349,7 +349,13 @@ async function loginWithRetry(
             const errMsg = err instanceof Error ? err.message : String(err);
             console.error(`[Gecko:Auth] Login attempt ${attempt} failed: ${errMsg}`);
 
-            if (errMsg.toLowerCase().includes("invalid token") || errMsg.toLowerCase().includes("disallowed intents")) {
+            const normalizedError = errMsg.toLowerCase();
+            if (
+                normalizedError.includes("invalid token") ||
+                normalizedError.includes("disallowed intents") ||
+                normalizedError.includes("authentication failed") ||
+                normalizedError.includes("4004")
+            ) {
                 throw new Error(errMsg);
             }
 
@@ -795,7 +801,9 @@ async function main(): Promise<void> {
     process.on("SIGTERM", () => void shutdown(0));
 
     if (hasToken && config.token) {
-        await probeDiscordConnectivity(config.token);
+        if (process.env.GECKO_NETPROBE === "true") {
+            await probeDiscordConnectivity(config.token);
+        }
 
         discordLoginWatchdog = setTimeout(() => {
             if (isReady || shutdownStarted) return;
@@ -808,7 +816,7 @@ async function main(): Promise<void> {
             await loginWithRetry(client, config.token, 3);
         } catch (authErr: unknown) {
             const msg = authErr instanceof Error ? authErr.message : String(authErr);
-            const fatalAuth = /invalid token|disallowed intents/i.test(msg);
+            const fatalAuth = /invalid token|disallowed intents|authentication failed|4004/i.test(msg);
 
             if (discordLoginWatchdog) {
                 clearTimeout(discordLoginWatchdog);
@@ -818,7 +826,7 @@ async function main(): Promise<void> {
             console.warn(`[Gecko:Auth] Discord authentication could not be completed: ${msg}`);
 
             if (fatalAuth) {
-                console.warn("[Gecko:Auth] Fatal authentication configuration error detected. Web dashboard remains available for configuration.");
+                console.warn("[Gecko:Auth] Fatal Discord authentication error detected (token or intents configuration). Web dashboard remains available for configuration.");
                 console.info("[Gecko:HTTP] Web server remains active for dashboard and health checks.");
             } else {
                 console.error("[Gecko:Watchdog] Transient Discord authentication failure exhausted retries. Exiting for Render self-healing restart.");

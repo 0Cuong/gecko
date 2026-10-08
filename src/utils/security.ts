@@ -253,8 +253,11 @@ export class SecurityManager {
         return SecurityManager.isPrivateIp(ip);
     }
 
-    public assertPublicHttpUrl(urlStr: string): Promise<void> {
-        return SecurityManager.assertPublicHttpUrl(urlStr);
+    public assertPublicHttpUrl(
+        urlStr: string,
+        options: { allowUnlistedPublic?: boolean } = {}
+    ): Promise<void> {
+        return SecurityManager.assertPublicHttpUrl(urlStr, options);
     }
 
     public checkCooldown(

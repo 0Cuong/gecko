@@ -17,6 +17,7 @@ import { buildSongFromTrack, type Song } from "../queue/types.js";
 import { GuildQueue } from "../queue/GuildQueue.js";
 import { play } from "../player/play.js";
 import { sanitizeUserErrorMessage } from "../utils/security.js";
+import { deferInteractionDirect, editOriginalResponseDirect } from "../utils/discordRest.js";
 
 const activeCommandLocks = new Set<string>();
 
@@ -26,7 +27,7 @@ async function safeEditReply(
 ) {
     try {
         if (interaction.deferred || interaction.replied) {
-            await interaction.editReply(payload);
+            await editOriginalResponseDirect(interaction, payload as Record<string, unknown>);
         } else {
             await interaction.reply(payload);
         }
@@ -62,7 +63,7 @@ export default {
         // Acknowledge before any lock, cache, member, resolver or voice work. Discord
         // invalidates an interaction after ~3 seconds, even when the work is valid.
         try {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            await deferInteractionDirect(interaction, MessageFlags.Ephemeral);
         } catch (error) {
             console.error(`[Music][Interaction] Failed to acknowledge /play guild=${guild.id}:`, error);
             return;

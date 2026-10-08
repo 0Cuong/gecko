@@ -16,6 +16,7 @@ import { VoiceSessionManager, VoiceSessionError } from "../player/VoiceSessionMa
 import { buildSongFromTrack, type Song } from "../queue/types.js";
 import { GuildQueue } from "../queue/GuildQueue.js";
 import { play } from "../player/play.js";
+import { sanitizeUserErrorMessage } from "../utils/security.js";
 
 const activeCommandLocks = new Set<string>();
 
@@ -145,7 +146,7 @@ export default {
                     embeds: [
                         embed(
                             "error",
-                            resolvedData instanceof Error ? resolvedData.message : "Error resolving query.",
+                            resolvedData instanceof Error ? sanitizeUserErrorMessage(resolvedData) : "Error resolving query.",
                         ),
                     ],
                 });

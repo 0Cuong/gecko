@@ -8,6 +8,7 @@ export interface YtdlpOptions {
 export function isBotDetectionError(errorMessage: string | undefined): boolean;
 export function isAgeRestrictedError(errorMessage: string | undefined): boolean;
 export function isUnavailableMediaError(errorMessage: string | undefined): boolean;
+export function verifyAndEnsureBinary(): Promise<void>;
 export function downloadExecutable(): Promise<void>;
 export function startAutoUpdater(): void;
 export function stopAutoUpdater(): void;

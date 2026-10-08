@@ -1,5 +1,6 @@
 import { spawn, execFile } from "node:child_process";
-import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { accessSync, chmodSync, constants, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import nodePath from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
@@ -401,6 +402,27 @@ export function ensureExecutable(targetPath = exePath) {
     }
 }
 
+function configuredBinaryTrust() {
+    const production = process.env.NODE_ENV === "production";
+    const version = process.env.GECKO_YTDLP_VERSION?.trim() || "";
+    const digest = process.env.GECKO_YTDLP_SHA256?.trim().toLowerCase() || "";
+    if (production && !version) throw new Error("GECKO_YTDLP_VERSION is required in production.");
+    if (production && !/^[a-f0-9]{64}$/.test(digest)) throw new Error("GECKO_YTDLP_SHA256 must be a 64-character SHA-256 digest in production.");
+    return { production, version, digest };
+}
+
+function sha256File(targetPath) {
+    const hash = createHash("sha256");
+    hash.update(readFileSync(targetPath));
+    return hash.digest("hex");
+}
+
+function verifyBinaryDigest(targetPath) {
+    const trust = configuredBinaryTrust();
+    if (!trust.production) return true;
+    return sha256File(targetPath) === trust.digest;
+}
+
 export async function validateExecutable(targetPath) {
     try {
         const { stdout } = await execFileAsync(targetPath, ["--version"], { timeout: 5000 });
@@ -427,7 +449,11 @@ export async function downloadExecutable() {
 
     downloadPromise = (async () => {
         const isUpdate = existsSync(exePath);
-        console.info(`[yt-dlp] ${isUpdate ? "Updating" : "Downloading"} binary (Nightly Build)...`);
+        const trust = configuredBinaryTrust();
+        console.info(`[yt-dlp] ${isUpdate ? "Updating" : "Downloading"} binary...`);
+        const releaseUrl = trust.version
+            ? `https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/${encodeURIComponent(trust.version)}/${filename}`
+            : `https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/${filename}`;
 
         cleanupOldBackups({ maxKeepOld: 1, minTmpAgeMs: 30_000 });
 
@@ -436,7 +462,7 @@ export async function downloadExecutable() {
             const tempPath = `${exePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
             let createdOldPath = null;
             try {
-                const response = await got.get(`https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/${filename}`, {
+                const response = await got.get(releaseUrl, {
                     timeout: { request: 60_000 },
                     responseType: "buffer"
                 });
@@ -448,9 +474,12 @@ export async function downloadExecutable() {
                     try { chmodSync(tempPath, exeMode); } catch {}
                 }
 
+                if (!verifyBinaryDigest(tempPath)) {
+                    throw new Error("Downloaded yt-dlp binary failed SHA-256 integrity verification.");
+                }
                 const isValid = await validateExecutable(tempPath);
                 if (!isValid) {
-                    throw new Error("Downloaded yt-dlp binary failed validation check.");
+                    throw new Error("Downloaded yt-dlp binary failed executable validation.");
                 }
 
                 if (existsSync(exePath)) {
@@ -539,9 +568,9 @@ export async function verifyAndEnsureBinary() {
         }
 
         ensureExecutable(exePath);
-        const version = await getBinaryVersion();
-        if (version === "unknown") {
-            console.warn("[yt-dlp] Executable corrupted or unusable. Re-downloading...");
+        const integrityOk = verifyBinaryDigest(exePath);
+        const version = integrityOk ? await getBinaryVersion() : "unknown";
+        if (!integrityOk || version === "unknown") {
             await downloadExecutable();
         } else {
             isBinaryVerified = true;

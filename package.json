@@ -13,13 +13,16 @@
         "build": "swc src -d dist --strip-leading-paths",
         "build:clean": "rimraf dist && swc src -d dist --strip-leading-paths",
         "typecheck": "tsc --noEmit",
-        "test": "npm run typecheck && npm run build && node tests/core.test.mjs && node tests/runtime.test.mjs && node tests/adversarial.test.mjs",
+        "test": "npm run typecheck && npm run build && node tests/core.test.mjs && node tests/runtime.test.mjs && node tests/adversarial.test.mjs && node tests/control-center.test.mjs && node tests/source-policy.test.mjs && node tests/security-regression.test.mjs",
         "test:soak": "npm run build && node --expose-gc tests/soak.mjs",
         "start": "node -r dotenv/config dist/index.js",
-        "dev": "swc src -d dist --strip-leading-paths && node -r dotenv/config dist/index.js"
+        "dev": "swc src -d dist --strip-leading-paths && node -r dotenv/config dist/index.js",
+        "test:unit": "npm run typecheck && npm run build && node tests/core.test.mjs && node tests/runtime.test.mjs && node tests/source-policy.test.mjs && node tests/security-regression.test.mjs",
+        "test:all": "npm test",
+        "audit:ci": "npm run typecheck && npm run build && npm run test:all"
     },
     "engines": {
-        "node": ">=20.0.0"
+        "node": ">=24.0.0"
     },
     "overrides": {
         "tar": "^7.5.21"

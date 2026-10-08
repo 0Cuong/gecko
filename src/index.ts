@@ -127,6 +127,7 @@ const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
 let isReady = false;
 let shutdownStarted = false;
 let memoryCheckInterval: NodeJS.Timeout | null = null;
+let discordLoginWatchdog: NodeJS.Timeout | null = null;
 let totalErrorCount = 0;
 let isIntegrityVerified = false;
 let integrityStatusString = "unverified";
@@ -562,6 +563,10 @@ async function main(): Promise<void> {
     client.once(Events.ClientReady, async (c) => {
         try {
             isReady = true;
+            if (discordLoginWatchdog) {
+                clearTimeout(discordLoginWatchdog);
+                discordLoginWatchdog = null;
+            }
             console.info(`[Gecko:Ready] Bot successfully logged in as ${c.user.tag} in ${Date.now() - startupTimestamp}ms.`);
             addControlLog("success", "GATEWAY_READY", `Bot đã trực tuyến và kết nối Discord: ${c.user.tag}`, {
                 id: c.user.id,
@@ -613,6 +618,10 @@ async function main(): Promise<void> {
 
         try {
             if (memoryCheckInterval) clearInterval(memoryCheckInterval);
+            if (discordLoginWatchdog) {
+                clearTimeout(discordLoginWatchdog);
+                discordLoginWatchdog = null;
+            }
             stopAutoUpdater();
 
             console.info(`[Gecko:Shutdown] Destroying ${client.queues.size} active music queues...`);
@@ -673,12 +682,33 @@ async function main(): Promise<void> {
     process.on("SIGTERM", () => void shutdown(0));
 
     if (hasToken && config.token) {
+        discordLoginWatchdog = setTimeout(() => {
+            if (isReady || shutdownStarted) return;
+
+            console.error("[Gecko:Watchdog] Discord Gateway did not reach READY within 90 seconds. Restarting the process for self-healing.");
+            void shutdown(1);
+        }, 90_000);
+
         try {
             await loginWithRetry(client, config.token, 3);
         } catch (authErr: unknown) {
             const msg = authErr instanceof Error ? authErr.message : String(authErr);
+            const fatalAuth = /invalid token|disallowed intents/i.test(msg);
+
+            if (discordLoginWatchdog) {
+                clearTimeout(discordLoginWatchdog);
+                discordLoginWatchdog = null;
+            }
+
             console.warn(`[Gecko:Auth] Discord authentication could not be completed: ${msg}`);
-            console.info("[Gecko:HTTP] Web server remains active at http://0.0.0.0:3000 to serve dashboard and health checks.");
+
+            if (fatalAuth) {
+                console.warn("[Gecko:Auth] Fatal authentication configuration error detected. Web dashboard remains available for configuration.");
+                console.info("[Gecko:HTTP] Web server remains active for dashboard and health checks.");
+            } else {
+                console.error("[Gecko:Watchdog] Transient Discord authentication failure exhausted retries. Exiting for Render self-healing restart.");
+                await shutdown(1);
+            }
         }
     } else {
         console.info("[Gecko:Auth] BOT_TOKEN not configured. Web server is running at http://0.0.0.0:3000.");

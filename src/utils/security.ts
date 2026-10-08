@@ -195,9 +195,10 @@ export class SecurityManager {
     /**
      * Retrieves remaining cooldown in milliseconds without setting or modifying state.
      */
-    public static getRemainingCooldown(target: any, commandOrCooldown?: any): number {
+    public static getRemainingCooldown(target: any, commandOrCooldown?: any, scope?: string): number {
         const { userId, commandName } = SecurityManager.parseCooldownArgs(target, commandOrCooldown);
-        const key = `${userId}:${commandName}`;
+        const scopeId = SecurityManager.normalizeScope(scope ?? SecurityManager.extractScope(target));
+        const key = `${scopeId}:${userId}:${commandName}`;
         const existingExpiry = SecurityManager.cooldowns.get(key);
         if (!existingExpiry) return 0;
         const remaining = existingExpiry - Date.now();
@@ -207,16 +208,17 @@ export class SecurityManager {
     /**
      * Checks if a user or interaction is currently on cooldown without modifying state.
      */
-    public static isOnCooldown(target: any, commandOrCooldown?: any): boolean {
-        return SecurityManager.getRemainingCooldown(target, commandOrCooldown) > 0;
+    public static isOnCooldown(target: any, commandOrCooldown?: any, scope?: string): boolean {
+        return SecurityManager.getRemainingCooldown(target, commandOrCooldown, scope) > 0;
     }
 
     /**
      * Resets the cooldown for a specific user and command.
      */
-    public static resetCooldown(target: any, commandOrCooldown?: any): boolean {
+    public static resetCooldown(target: any, commandOrCooldown?: any, scope?: string): boolean {
         const { userId, commandName } = SecurityManager.parseCooldownArgs(target, commandOrCooldown);
-        const key = `${userId}:${commandName}`;
+        const scopeId = SecurityManager.normalizeScope(scope ?? SecurityManager.extractScope(target));
+        const key = `${scopeId}:${userId}:${commandName}`;
         return SecurityManager.cooldowns.delete(key);
     }
 
@@ -268,8 +270,8 @@ export class SecurityManager {
         return SecurityManager.getRemainingCooldown(target, commandOrCooldown, scope);
     }
 
-    public isOnCooldown(target: any, commandOrCooldown?: any): boolean {
-        return SecurityManager.isOnCooldown(target, commandOrCooldown);
+    public isOnCooldown(target: any, commandOrCooldown?: any, scope?: string): boolean {
+        return SecurityManager.isOnCooldown(target, commandOrCooldown, scope);
     }
 
     public resetCooldown(target: any, commandOrCooldown?: any, scope?: string): boolean {

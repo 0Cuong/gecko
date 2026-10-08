@@ -683,6 +683,127 @@ export function isUrlExpired(info: any, bufferSeconds = 60): boolean {
     return false;
 }
 
+const PIPED_API_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.leptons.xyz",
+    "https://pipedapi.nosebs.ru",
+] as const;
+
+const PIPED_TRUSTED_ROOTS = [
+    "kavin.rocks",
+    "leptons.xyz",
+    "nosebs.ru",
+    "mha.fi",
+    "garudalinux.org",
+    "rivo.lol",
+] as const;
+
+function extractYouTubeVideoId(url: string): string | null {
+    return /(?:youtube\\.com\\/(?:watch\\?[^#]*v=|shorts\\/|embed\\/)|youtu\\.be\\/)([A-Za-z0-9_-]{11})/i.exec(url)?.[1] ?? null;
+}
+
+function isTrustedPipedHost(url: string): boolean {
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return PIPED_TRUSTED_ROOTS.some((root) => hostname === root || hostname.endsWith("." + root));
+    } catch {
+        return false;
+    }
+}
+
+async function resolvePipedAudio(videoId: string): Promise<{
+    url: string;
+    headers: Record<string, string>;
+    expiresAt: number;
+} | null> {
+    for (const apiBase of PIPED_API_INSTANCES) {
+        try {
+            const response = await fetch(apiBase + "/streams/" + videoId, {
+                headers: {
+                    Accept: "application/json",
+                    "User-Agent": "Gecko/1.0 YouTube playback fallback",
+                },
+                signal: AbortSignal.timeout(6_000),
+            });
+
+            if (!response.ok) {
+                console.warn("[Stream] Piped API returned HTTP " + response.status);
+                continue;
+            }
+
+            const payload = await response.json() as {
+                proxyUrl?: string;
+                audioStreams?: Array<{
+                    url?: string;
+                    bitrate?: number;
+                    mimeType?: string;
+                    codec?: string;
+                }>;
+            };
+
+            if (!payload.proxyUrl || !isTrustedPipedHost(payload.proxyUrl)) {
+                console.warn("[Stream] Piped API proxy host is not trusted; skipping instance.");
+                continue;
+            }
+
+            const streams = Array.isArray(payload.audioStreams)
+                ? payload.audioStreams
+                    .filter((stream) => typeof stream.url === "string" && stream.url.length > 0)
+                    .sort((a, b) => {
+                        const aOpus = /opus/i.test(a.codec ?? "") || /audio\\/webm/i.test(a.mimeType ?? "") ? 1 : 0;
+                        const bOpus = /opus/i.test(b.codec ?? "") || /audio\\/webm/i.test(b.mimeType ?? "") ? 1 : 0;
+                        if (aOpus !== bOpus) return bOpus - aOpus;
+                        return Number(b.bitrate ?? 0) - Number(a.bitrate ?? 0);
+                    })
+                : [];
+
+            for (const stream of streams) {
+                try {
+                    const upstream = new URL(stream.url!);
+                    if (upstream.protocol !== "https:") continue;
+
+                    const proxy = new URL(payload.proxyUrl);
+                    let proxyPath = proxy.pathname.replace(/\\/+$/, "");
+                    proxy.pathname = proxyPath + upstream.pathname;
+
+                    for (const [key, value] of upstream.searchParams.entries()) {
+                        proxy.searchParams.set(key, value);
+                    }
+                    proxy.searchParams.set("host", upstream.host);
+                    proxy.searchParams.set("rewrite", "false");
+
+                    const resolvedUrl = proxy.toString();
+                    await SecurityManager.assertPublicHttpUrl(resolvedUrl, { allowUnlistedPublic: true });
+
+                    let expiresAt = Date.now() + 120_000;
+                    const expire = upstream.searchParams.get("expire");
+                    if (expire && /^\\d+$/.test(expire)) expiresAt = Number(expire) * 1_000;
+
+                    console.info(
+                        "[Stream] YouTube Piped recovery succeeded instance=" +
+                        new URL(apiBase).hostname,
+                    );
+
+                    return {
+                        url: resolvedUrl,
+                        headers: {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
+                        },
+                        expiresAt,
+                    };
+                } catch {
+                    continue;
+                }
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn("[Stream] Piped API unavailable: " + message.slice(0, 160));
+        }
+    }
+
+    return null;
+}
+
 const FFMPEG_LOW_LATENCY_BASE_ARGS = [
     "-reconnect", "1",
     "-reconnect_streamed", "1",
@@ -863,6 +984,21 @@ export async function createAudioStream(
                                 ? fallbackError
                                 : classifyError(fallbackError, "", url);
                             console.warn("[Stream] YouTube fallback client=" + playerClient + " failed: " + extractionError.code);
+                        }
+                    }
+                    const pipedVideoId = extractYouTubeVideoId(url);
+                    if (pipedVideoId) {
+                        const piped = await resolvePipedAudio(pipedVideoId);
+                        if (piped) {
+                            return {
+                                type: "direct",
+                                stream: null,
+                                process: null,
+                                url: piped.url,
+                                headers: piped.headers,
+                                ffmpegArgs: [],
+                                expiresAt: piped.expiresAt,
+                            };
                         }
                     }
                 } catch (fallbackErr: any) {

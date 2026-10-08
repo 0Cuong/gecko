@@ -1,5 +1,6 @@
 import type { Readable } from "node:stream";
 import { createAudioStream, safeKill, type AudioStreamResult } from "./ytdlp-wrapper.js";
+import { securityManager } from "../utils/security.js";
 import { defaultResolverManager, type TrackMetadata, type TrackSource } from "./resolver.js";
 
 export interface PlayableStream {
@@ -80,7 +81,13 @@ export async function resolvePlayableStream(track: TrackMetadata, options: { for
             throw wrapped;
         }
     }
-    validateExpiry(extracted.expiresAt); validateStream(track, target.source, extracted.url);
+    validateExpiry(extracted.expiresAt);
+    if (extracted.url) {
+        // yt-dlp-derived media URLs cross an explicit trust boundary: only public
+        // destinations are accepted before any downstream process can consume them.
+        await securityManager.assertPublicHttpUrl(extracted.url, { allowUnlistedPublic: true });
+    }
+    validateStream(track, target.source, extracted.url);
     if (extracted.type === "direct") {
         if (!extracted.url) throw new Error("Direct stream extraction returned no media URL.");
         Object.assign(track, { streamUrl: extracted.url, audioUrl: extracted.url, directUrl: extracted.url, streamType: "direct", expiresAt: extracted.expiresAt, engine: "yt-dlp", isLazy: false });

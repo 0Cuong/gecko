@@ -8,7 +8,7 @@ import { Events, Status } from "discord.js";
 
 import { config } from "./config/index.js";
 import { GeckoClient } from "./client/GeckoClient.js";
-import { downloadExecutable, stopAutoUpdater } from "./utils/ytdlp/index.js";
+import { verifyAndEnsureBinary, stopAutoUpdater } from "./utils/ytdlp/index.js";
 import type { SlashCommand } from "./client/types.js";
 import { metrics } from "./utils/metrics.js";
 
@@ -100,14 +100,26 @@ export interface IntegrityVerificationResult {
 }
 
 async function verifyIntegrity(): Promise<IntegrityVerificationResult> {
-    console.info("[Gecko:Security] Integrity check bypassed (Disabled)");
-    return {
-        verified: true,
-        status: "DEV BYPASSED",
-        reason: "Integrity check disabled",
-        modifiedFiles: [],
-        details: []
-    };
+    try {
+        await verifyAndEnsureBinary();
+        return {
+            verified: true,
+            status: "VERIFIED",
+            reason: "yt-dlp executable passed the configured integrity gate.",
+            modifiedFiles: [],
+            details: ["yt-dlp binary integrity verified before startup."]
+        };
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (process.env.NODE_ENV === "production") throw new Error("Startup integrity verification failed.");
+        return {
+            verified: false,
+            status: "UNVERIFIED",
+            reason: "Development startup continued without a verified release binary.",
+            modifiedFiles: [],
+            details: [reason]
+        };
+    }
 }
 
 const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
@@ -266,7 +278,7 @@ function startMemoryProtection(thresholdMB = 600): NodeJS.Timeout {
 async function main(): Promise<void> {
     const integrityResult = await verifyIntegrity();
 
-    isIntegrityVerified = true;
+    isIntegrityVerified = integrityResult.verified;
     integrityStatusString = integrityResult.status;
 
     printStartupBanner(integrityResult.status);
@@ -506,21 +518,15 @@ async function main(): Promise<void> {
         console.error(`[Gecko:HTTP] Server socket error: ${err.message}`);
     });
 
-    server.listen(port, "0.0.0.0", () => {
-        console.info(`[Gecko:HTTP] Web server listening on http://0.0.0.0:${port} for keep-alive & health checks.`);
+    server.listen(port, config.bindHost, () => {
+        console.info(`[Gecko:HTTP] Web server listening on http://${config.bindHost}:${port}.`);
     });
 
     memoryCheckInterval = startMemoryProtection(600);
 
     await loadCommands(client);
 
-    void downloadExecutable()
-        .then(() => console.info("[Gecko:YTDLP] Binary verification completed in background."))
-        .catch((err: unknown) => {
-            totalErrorCount++;
-            const msg = err instanceof Error ? err.message : String(err);
-            console.warn(`[Gecko:YTDLP] Background setup non-fatal warning: ${msg}`);
-        });
+    // yt-dlp integrity was verified before the HTTP server was bound.
 
     client.on(Events.ShardDisconnect, (event, shardId) => {
         console.warn(`[Gecko:Gateway] Shard ${shardId} disconnected (Code: ${event.code}).`);

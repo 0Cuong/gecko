@@ -1,0 +1,49 @@
+name: Security and quality
+
+on:
+  push:
+    branches: ["main", "security-hardening-2026-10"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Verify action pinning
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^[[:space:]]*uses:[[:space:]]+[^./[:space:]]+@(main|master|v[0-9]|[0-9]+\.[0-9]+)' .github/workflows; then
+            echo "Unpinned third-party GitHub Action detected."
+            exit 1
+          fi
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Regression tests
+        run: node tests/security-regression.test.mjs
+
+      - name: Full test suite
+        run: npm test

@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime state
+cache/
+cookies.txt
+*.log
+
+# Test/coverage artifacts
+coverage/
+.nyc_output/
+
+# Local editor/OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.tmp.*
+*.old.*

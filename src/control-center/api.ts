@@ -7,7 +7,7 @@ import type http from "node:http";
 import { ChannelType, PermissionsBitField } from "discord.js";
 import type { GeckoClient } from "../client/GeckoClient.js";
 import { addControlLog, getControlLogs, registerSseClient } from "./logger.js";
-import { verifyAdminAuth, logAuthFailure } from "./auth.js";
+import { consumeControlRateLimit, verifyAdminAuth, logAuthFailure } from "./auth.js";
 
 function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
     const jsonStr = JSON.stringify(payload);
@@ -54,6 +54,26 @@ export async function handleControlCenterApi(
 ): Promise<boolean> {
     const parsedUrl = new URL(req.url || "/", "http://127.0.0.1");
     const path = parsedUrl.pathname;
+
+    // /api/health is intentionally public. All other API routes require the
+    // production auth boundary before any route-specific logic is evaluated.
+    if (path !== "/api/health" && path.startsWith("/api/")) {
+        if (!consumeControlRateLimit(req)) {
+            sendJson(res, 429, {
+                success: false,
+                error: { code: "RATE_LIMITED", message: "Too many requests." }
+            });
+            return true;
+        }
+        if (!verifyAdminAuth(req)) {
+            logAuthFailure(req, path);
+            sendJson(res, 401, {
+                success: false,
+                error: { code: "UNAUTHORIZED", message: "Yêu cầu quyền quản trị viên hợp lệ." }
+            });
+            return true;
+        }
+    }
 
     // Handle CORS preflight
     if (req.method === "OPTIONS" && path.startsWith("/api/")) {
@@ -206,10 +226,10 @@ export async function handleControlCenterApi(
             });
         } catch (err: unknown) {
             const errorMsg = err instanceof Error ? err.message : String(err);
-            addControlLog("error", "BOT_CONNECT_FAILED", `Đăng nhập bot thất bại: ${errorMsg}`);
+            addControlLog("error", "BOT_CONNECT_FAILED", "Discord login failed.", { errorType: errorMsg.slice(0, 120) });
             sendJson(res, 500, {
                 success: false,
-                error: { code: "LOGIN_FAILED", message: errorMsg }
+                error: { code: "LOGIN_FAILED", message: "Internal server error." }
             });
         }
         return true;
@@ -249,7 +269,7 @@ export async function handleControlCenterApi(
             const errorMsg = err instanceof Error ? err.message : String(err);
             sendJson(res, 500, {
                 success: false,
-                error: { code: "DISCONNECT_ERROR", message: errorMsg }
+                error: { code: "DISCONNECT_ERROR", message: "Internal server error." }
             });
         }
         return true;
@@ -291,7 +311,7 @@ export async function handleControlCenterApi(
             addControlLog("error", "BOT_RESTART_ERROR", `Lỗi khi tái khởi động bot: ${errorMsg}`);
             sendJson(res, 500, {
                 success: false,
-                error: { code: "RESTART_FAILED", message: errorMsg }
+                error: { code: "RESTART_FAILED", message: "Internal server error." }
             });
         }
         return true;
@@ -503,7 +523,7 @@ export async function handleControlCenterApi(
             addControlLog("error", "MESSAGE_SEND_ERROR", `Lỗi gửi tin nhắn: ${errorMsg}`);
             sendJson(res, 500, {
                 success: false,
-                error: { code: "DISCORD_API_ERROR", message: errorMsg }
+                error: { code: "DISCORD_API_ERROR", message: "Internal server error." }
             });
         }
         return true;
@@ -649,7 +669,7 @@ export async function handleControlCenterApi(
                     const errorMsg = err instanceof Error ? err.message : String(err);
                     sendJson(res, 500, {
                         success: false,
-                        error: { code: "SYNC_FAILED", message: errorMsg }
+                        error: { code: "SYNC_FAILED", message: "Internal server error." }
                     });
                 }
                 return true;

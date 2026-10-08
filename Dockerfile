@@ -1,7 +1,6 @@
-# Gecko Discord Music Bot - 24/7 Cloud Container
-FROM node:20-bookworm-slim
+# Gecko Discord Music Bot - production container
+FROM node:24-bookworm-slim
 
-# Install system dependencies: ffmpeg for audio streaming, certificates, and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     ca-certificates \
@@ -11,25 +10,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# Copy package manifests
 COPY package.json ./
+RUN npm install --omit=optional
 
-# Install dependencies
-RUN npm install
-
-# Copy source files
 COPY tsconfig.json ./
 COPY src/ ./src/
 COPY index.html ./
-
-# Build TypeScript code with SWC
 RUN npm run build
+
+# Run with an unprivileged account and a writable runtime directory only.
+RUN useradd --system --create-home --uid 10001 gecko \
+    && mkdir -p /app/cache \
+    && chown -R gecko:gecko /app
+USER gecko
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV BIND_HOST=127.0.0.1
 
 EXPOSE 3000
-
-# Start 24/7 Discord bot engine and web server
 CMD ["npm", "start"]

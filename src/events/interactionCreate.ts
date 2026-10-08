@@ -1,9 +1,12 @@
 import { MessageFlags, type ChatInputCommandInteraction, type Interaction } from "discord.js";
 import { embed } from "../utils/embeds.js";
 import type { GeckoClient } from "../client/GeckoClient.js";
-import { securityManager } from "../utils/security.js";
+import { securityManager, sanitizeUserErrorMessage } from "../utils/security.js";
+import { dbAdapter } from "../database/DatabaseAdapter.js";
+import { PermissionsBitField, GuildMember } from "discord.js";
 
 const DM_SCOPE = "DM";
+const DJ_COMMANDS = new Set(["clear", "remove", "move", "stop", "leave", "volume", "loop", "shuffle", "autoplay", "previous"]);
 
 export default async function interactionCreate(
     interaction: Interaction,
@@ -13,6 +16,24 @@ export default async function interactionCreate(
 
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
+
+    if (interaction.guildId && DJ_COMMANDS.has(interaction.commandName)) {
+        const settings = await dbAdapter.getGuildSettings(interaction.guildId);
+        if (settings.djRoleId) {
+            const member = interaction.member instanceof GuildMember
+                ? interaction.member
+                : await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+            const isAdmin = Boolean(member?.permissions.has(PermissionsBitField.Flags.Administrator));
+            const hasDjRole = Boolean(member?.roles.cache.has(settings.djRoleId));
+            if (!isAdmin && !hasDjRole) {
+                await interaction.reply({
+                    embeds: [embed("error", "You need the configured DJ role or Administrator permission to use this command.")],
+                    flags: MessageFlags.Ephemeral,
+                }).catch(() => {});
+                return;
+            }
+        }
+    }
 
     const cooldown = securityManager.checkCooldown(
         interaction.user.id,
@@ -44,24 +65,8 @@ export default async function interactionCreate(
     }
 }
 
-function sanitizeErrorMessage(err: unknown): string {
-    if (!err) return "An unexpected error occurred.";
-    const message = err instanceof Error ? err.message : String(err);
-    if (!message) return "An unexpected error occurred.";
-
-    // Guard against leaking internal file paths, syscall codes, stack traces, credentials, or internal IPs
-    const containsSystemLeak =
-        /([\\/][a-zA-Z0-9_.-]+){2,}|ENOENT|EACCES|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EADDRINUSE|at\s+[a-zA-Z0-9_.]+\s+\(|127\.0\.0\.1|0\.0\.0\.0|localhost|token|secret|password|api[_-]?key/i.test(message);
-
-    if (containsSystemLeak) {
-        return "An unexpected internal error occurred while executing this command.";
-    }
-
-    return message.length > 250 ? `${message.slice(0, 247)}...` : message;
-}
-
 async function handleCommandError(interaction: ChatInputCommandInteraction, err: unknown): Promise<void> {
-    const msg = sanitizeErrorMessage(err);
+    const msg = sanitizeUserErrorMessage(err);
 
     if (interaction.replied || interaction.deferred) {
         try {

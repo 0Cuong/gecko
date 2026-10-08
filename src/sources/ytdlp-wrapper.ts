@@ -750,8 +750,8 @@ async function resolvePipedAudio(videoId: string): Promise<{
                 ? payload.audioStreams
                     .filter((stream) => typeof stream.url === "string" && stream.url.length > 0)
                     .sort((a, b) => {
-                        const aOpus = /opus/i.test(a.codec ?? "") || /audio\\/webm/i.test(a.mimeType ?? "") ? 1 : 0;
-                        const bOpus = /opus/i.test(b.codec ?? "") || /audio\\/webm/i.test(b.mimeType ?? "") ? 1 : 0;
+                        const aOpus = /opus/i.test(a.codec ?? "") || (a.mimeType ?? "").toLowerCase().includes("audio/webm") ? 1 : 0;
+                        const bOpus = /opus/i.test(b.codec ?? "") || (b.mimeType ?? "").toLowerCase().includes("audio/webm") ? 1 : 0;
                         if (aOpus !== bOpus) return bOpus - aOpus;
                         return Number(b.bitrate ?? 0) - Number(a.bitrate ?? 0);
                     })
@@ -763,7 +763,7 @@ async function resolvePipedAudio(videoId: string): Promise<{
                     if (upstream.protocol !== "https:") continue;
 
                     const proxy = new URL(payload.proxyUrl);
-                    let proxyPath = proxy.pathname.replace(/\\/+$/, "");
+                    let proxyPath = proxy.pathname.replace(/\/+$/, "");
                     proxy.pathname = proxyPath + upstream.pathname;
 
                     for (const [key, value] of upstream.searchParams.entries()) {
@@ -777,7 +777,7 @@ async function resolvePipedAudio(videoId: string): Promise<{
 
                     let expiresAt = Date.now() + 120_000;
                     const expire = upstream.searchParams.get("expire");
-                    if (expire && /^\\d+$/.test(expire)) expiresAt = Number(expire) * 1_000;
+                    if (expire && /^\d+$/.test(expire)) expiresAt = Number(expire) * 1_000;
 
                     console.info(
                         "[Stream] YouTube Piped recovery succeeded instance=" +

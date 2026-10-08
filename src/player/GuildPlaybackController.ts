@@ -9,6 +9,7 @@ import type { Song } from "../queue/types.js";
 import { buildSongFromTrack } from "../queue/types.js";
 import type { GuildQueue } from "../queue/GuildQueue.js";
 import { embed } from "../utils/embeds.js";
+import { sanitizeUserErrorMessage } from "../utils/security.js";
 import { metrics } from "../utils/metrics.js";
 import { getStream } from "./stream.js";
 import type { PlayableStream } from "../sources/stream-resolver.js";
@@ -401,7 +402,7 @@ export class GuildPlaybackController {
         const channel = this.queue.textChannel(this.client);
         if (channel) {
             void channel.send({
-                embeds: [embed("error", `❌ Skipped **${track.title.slice(0, 80)}** after playback failed: ${error.message.slice(0, 180)}`)],
+                embeds: [embed("error", `❌ Skipped **${track.title.slice(0, 80)}** after playback failed: ${sanitizeUserErrorMessage(error).slice(0, 180)}`)],
             }).catch((sendError: unknown) => logMusic("WARN", {
                 guildId: this.guildId,
                 track: track.id,

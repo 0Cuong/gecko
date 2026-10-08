@@ -24,6 +24,7 @@ export const config = {
     emptyVoiceTimeout: positiveInteger("EMPTY_VOICE_TIMEOUT", 180, 30, 86_400) * 1_000,
     maxQueueSize: positiveInteger("MAX_QUEUE_SIZE", 500, 1, 2_000),
     maxPlaylistSize: positiveInteger("MAX_PLAYLIST_SIZE", 100, 1, 500),
+    bindHost: optional("BIND_HOST", process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0"),
 } as const;
 
 export type GeckoConfig = typeof config;

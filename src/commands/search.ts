@@ -16,6 +16,7 @@ import { VoiceSessionManager, VoiceSessionError } from "../player/VoiceSessionMa
 import { buildSongFromTrack, type Song } from "../queue/types.js";
 import { GuildQueue } from "../queue/GuildQueue.js";
 import { play } from "../player/play.js";
+import { sanitizeUserErrorMessage } from "../utils/security.js";
 
 const activeCommandLocks = new Set<string>();
 
@@ -113,7 +114,7 @@ export default {
                 searchResults = (Array.isArray(resolved) ? resolved : [resolved]).slice(0, 10);
             } catch (err) {
                 await safeEditReply(interaction, {
-                    embeds: [embed("error", err instanceof Error ? err.message : "Failed to execute search.")],
+                    embeds: [embed("error", err instanceof Error ? sanitizeUserErrorMessage(err) : "Failed to execute search.")],
                 });
                 return;
             }

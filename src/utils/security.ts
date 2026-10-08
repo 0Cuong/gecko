@@ -70,77 +70,90 @@ export class SecurityManager {
      * Kiểm tra một IP có thuộc dải IP nội bộ/riêng tư (RFC 1918, RFC 4193, Loopback, Link-Local) hay không.
      */
     public static isPrivateIp(ip: string): boolean {
-        if (!net.isIP(ip)) return false;
-        
+        if (!ip || !net.isIP(ip)) return false;
         if (net.isIPv4(ip)) {
-            const parts = ip.split(".").map(Number);
-            if (parts[0] === 127) return true; // Loopback
-            if (parts[0] === 10) return true; // Class A Private
-            if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // Class B Private
-            if (parts[0] === 192 && parts[1] === 168) return true; // Class C Private
-            if (parts[0] === 169 && parts[1] === 254) return true; // Link-local / AWS Metadata
-            if (parts[0] === 0) return true;
-        } else if (net.isIPv6(ip)) {
-            const lower = ip.toLowerCase();
-            if (lower === "::1" || lower === "::") return true;
-            if (lower.startsWith("fe80:")) return true; // Link-local
-            if (lower.startsWith("fc00:") || lower.startsWith("fd00:")) return true; // Unique local
+            const [a, b, cc] = ip.split(".").map(Number);
+            return (
+                a === 0 || a === 10 || a === 127 ||
+                (a === 100 && b >= 64 && b <= 127) ||
+                (a === 169 && b === 254) ||
+                (a === 172 && b >= 16 && b <= 31) ||
+                (a === 192 && b === 0 && (cc === 0 || cc === 2)) ||
+                (a === 192 && b === 168) ||
+                (a === 198 && (b === 18 || b === 19)) ||
+                (a === 198 && b === 51 && cc === 100) ||
+                (a === 203 && b === 0 && cc === 113) ||
+                a >= 224
+            );
+        }
+        const lower = ip.toLowerCase();
+        if (lower.startsWith("::ffff:")) return SecurityManager.isPrivateIp(lower.slice(7));
+        return lower === "::" || lower === "::1" ||
+            lower.startsWith("fc") || lower.startsWith("fd") ||
+            lower.startsWith("fe80:") || lower.startsWith("ff") ||
+            lower.startsWith("2001:db8:");
+    }
+
+    private static readonly WHITELISTED_DOMAINS = new Set([
+        "youtube.com", "youtu.be", "spotify.com", "spotify.link",
+        "soundcloud.com", "snd.sc", "tiktok.com", "tikwm.com",
+        "ytimg.com", "ggpht.com", "googlevideo.com", "googleusercontent.com",
+        "tiktokcdn.com", "tiktokv.com", "byteoversea.com", "ibytedtos.com",
+        "sndcdn.com", "scdn.co"
+    ]);
+
+    private static extraAllowedDomains(): Set<string> {
+        return new Set((process.env.GECKO_ALLOWED_EXTERNAL_HOSTS || "")
+            .split(",").map((value) => value.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean));
+    }
+
+    private static hostAllowed(hostname: string): boolean {
+        const normalized = hostname.toLowerCase().replace(/\.$/, "");
+        const allowed = new Set([...SecurityManager.WHITELISTED_DOMAINS, ...SecurityManager.extraAllowedDomains()]);
+        for (const domainName of allowed) {
+            if (normalized === domainName || normalized.endsWith("." + domainName)) return true;
         }
         return false;
     }
 
-    private static readonly WHITELISTED_DOMAINS = new Set([
-        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com",
-        "spotify.com", "open.spotify.com", "play.spotify.com", "spotify.link",
-        "soundcloud.com", "www.soundcloud.com", "m.soundcloud.com", "snd.sc",
-        "tiktok.com", "www.tiktok.com", "vm.tiktok.com", "vt.tiktok.com", "tikwm.com", "www.tikwm.com",
-        "i.ytimg.com", "yt3.ggpht.com"
-    ]);
-
     /**
-     * Đảm bảo URL là công khai và an toàn, ngăn chặn SSRF.
+     * Validates an HTTP(S) destination and every DNS answer. User-controlled
+     * URLs must target an allowlisted external service; derived media URLs may
+     * use public-only validation after extraction.
      */
-    public static async assertPublicHttpUrl(urlStr: string): Promise<void> {
-        if (!urlStr || typeof urlStr !== "string") {
-            throw new Error(`Invalid or empty URL`);
-        }
-
-        if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
-            throw new Error(`Forbidden protocol or invalid URL`);
-        }
-
+    public static async assertPublicHttpUrl(
+        urlStr: string,
+        options: { allowUnlistedPublic?: boolean } = {}
+    ): Promise<void> {
+        if (!urlStr || typeof urlStr !== "string") throw new Error("Invalid or empty URL");
         let parsed: URL;
-        try {
-            parsed = new URL(urlStr);
-        } catch {
-            throw new Error(`Invalid URL format: ${urlStr}`);
-        }
+        try { parsed = new URL(urlStr); } catch { throw new Error("Invalid URL format"); }
 
-        const hostname = parsed.hostname.toLowerCase();
-        if (SecurityManager.WHITELISTED_DOMAINS.has(hostname)) {
-            return;
-        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Forbidden protocol");
+        if (parsed.username || parsed.password) throw new Error("Embedded URL credentials are forbidden");
 
-        if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".onion")) {
-            throw new Error(`Access to local domain is forbidden: ${hostname}`);
+        const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+        if (!hostname) throw new Error("URL hostname is required");
+
+        if (!options.allowUnlistedPublic && !SecurityManager.hostAllowed(hostname)) {
+            throw new Error("External destination is not allowlisted");
         }
 
         if (net.isIP(hostname)) {
-            if (this.isPrivateIp(hostname)) {
-                throw new Error(`Access to private IP is forbidden: ${hostname}`);
-            }
-        } else {
-            try {
-                const addresses = await dns.lookup(hostname, { all: true });
-                for (const addr of addresses) {
-                    if (this.isPrivateIp(addr.address)) {
-                        throw new Error(`Access to private IP is forbidden: ${hostname} resolved to ${addr.address}`);
-                    }
-                }
-            } catch (err: unknown) {
-                if (err instanceof Error && err.message.includes("Access to private IP")) {
-                    throw err;
-                }
+            if (SecurityManager.isPrivateIp(hostname)) throw new Error("Access to private or reserved IP is forbidden");
+            return;
+        }
+
+        let addresses: Array<{ address: string }>;
+        try {
+            addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+        } catch {
+            throw new Error("Destination DNS resolution failed");
+        }
+        if (!addresses.length) throw new Error("Destination has no DNS answers");
+        for (const addr of addresses) {
+            if (SecurityManager.isPrivateIp(addr.address)) {
+                throw new Error("Destination resolves to private or reserved IP");
             }
         }
     }
@@ -161,7 +174,8 @@ export class SecurityManager {
             cooldownMsOrSec
         );
 
-        const key = `${userId}:${commandName}`;
+        const scopeId = SecurityManager.normalizeScope(scope ?? SecurityManager.extractScope(target));
+        const key = `${scopeId}:${userId}:${commandName}`;
         const now = Date.now();
         const existingExpiry = SecurityManager.cooldowns.get(key);
 
@@ -250,16 +264,16 @@ export class SecurityManager {
         return SecurityManager.checkCooldown(target, commandOrCooldown, cooldownMsOrSec, scope);
     }
 
-    public getRemainingCooldown(target: any, commandOrCooldown?: any): number {
-        return SecurityManager.getRemainingCooldown(target, commandOrCooldown);
+    public getRemainingCooldown(target: any, commandOrCooldown?: any, scope?: string): number {
+        return SecurityManager.getRemainingCooldown(target, commandOrCooldown, scope);
     }
 
     public isOnCooldown(target: any, commandOrCooldown?: any): boolean {
         return SecurityManager.isOnCooldown(target, commandOrCooldown);
     }
 
-    public resetCooldown(target: any, commandOrCooldown?: any): boolean {
-        return SecurityManager.resetCooldown(target, commandOrCooldown);
+    public resetCooldown(target: any, commandOrCooldown?: any, scope?: string): boolean {
+        return SecurityManager.resetCooldown(target, commandOrCooldown, scope);
     }
 
     public clearAllCooldowns(): void {
@@ -341,6 +355,19 @@ export class SecurityManager {
 
         const cooldownMs = SecurityManager.normalizeCooldownMs(rawCooldown, DEFAULT_COOLDOWN_MS);
         return { userId, commandName, cooldownMs };
+    }
+
+    private static extractScope(target: any): string {
+        if (!target || typeof target !== "object") return "global";
+        if (typeof target.guildId === "string" && target.guildId) return target.guildId;
+        if (typeof target.guild?.id === "string" && target.guild.id) return target.guild.id;
+        if (typeof target.channelId === "string" && target.channelId) return target.channelId;
+        return "global";
+    }
+
+    private static normalizeScope(scope: string | undefined): string {
+        const value = (scope || "global").trim();
+        return value || "global";
     }
 
     private static extractUserId(target: any): string | null {

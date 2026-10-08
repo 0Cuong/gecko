@@ -14,8 +14,58 @@ export default async function interactionCreate(
 ): Promise<void> {
     if (!interaction.isChatInputCommand()) return;
 
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
+    const commandName = interaction.commandName;
+    const guildId = interaction.guildId ?? DM_SCOPE;
+
+    console.info(
+        `[Music][Interaction] Received /${commandName} guild=${guildId} user=${interaction.user.id}`,
+    );
+
+    // Discord requires an initial acknowledgement within ~3 seconds.
+    // Protect slower commands with a 2s safety defer, then bridge legacy reply() calls.
+    const originalReply = interaction.reply.bind(interaction);
+    let autoAcknowledged = false;
+    const autoAckTimer = setTimeout(() => {
+        if (interaction.replied || interaction.deferred || !interaction.isRepliable()) return;
+
+        autoAcknowledged = true;
+        void interaction.deferReply().then(() => {
+            console.info(`[Music][Interaction] Auto-deferred /${commandName} after 2000ms.`);
+        }).catch((error) => {
+            autoAcknowledged = false;
+            console.warn(
+                `[Music][Interaction] Auto-defer failed /${commandName}:`,
+                error instanceof Error ? error.message : String(error),
+            );
+        });
+    }, 2000);
+
+    const interactionAny = interaction as any;
+    interactionAny.reply = async (options: any = {}) => {
+        if (interaction.deferred) {
+            const { flags: _flags, ...editOptions } = options ?? {};
+            return interaction.editReply(editOptions);
+        }
+        if (interaction.replied) {
+            return interaction.followUp(options);
+        }
+        return originalReply(options);
+    };
+
+    const command = client.commands.get(commandName);
+    if (!command) {
+        clearTimeout(autoAckTimer);
+        console.warn(`[Music][Interaction] Unknown command /${commandName}; replying instead of silently dropping interaction.`);
+        try {
+            await interaction.reply({
+                embeds: [embed("error", "This command is no longer loaded. Please reopen the slash-command menu and try again.")],
+                flags: MessageFlags.Ephemeral,
+            });
+        } catch (error) {
+            console.error(`[Music][Interaction] Unknown command response failed /${commandName}:`, error);
+        }
+        return;
+    }
 
     if (interaction.guildId && DJ_COMMANDS.has(interaction.commandName)) {
         const settings = await dbAdapter.getGuildSettings(interaction.guildId);
@@ -39,7 +89,7 @@ export default async function interactionCreate(
         interaction.user.id,
         interaction.commandName,
         undefined,
-        interaction.guildId ?? DM_SCOPE,
+        guildId,
     );
 
     if (cooldown.onCooldown) {
@@ -59,9 +109,18 @@ export default async function interactionCreate(
 
     try {
         await command.execute(interaction, client);
+        if (interaction.replied || interaction.deferred) {
+            console.info(
+                `[Music][Interaction] Completed /${commandName} acknowledged=${interaction.replied ? "replied" : "deferred"} autoAcknowledged=${autoAcknowledged}`,
+            );
+        } else {
+            console.warn(`[Music][Interaction] /${commandName} finished without an acknowledgement.`);
+        }
     } catch (err) {
-        console.error(`[Music][Interaction] Command failed command=${interaction.commandName} guild=${interaction.guildId ?? DM_SCOPE}:`, err);
+        console.error(`[Music][Interaction] Command failed command=${commandName} guild=${guildId}:`, err);
         await handleCommandError(interaction, err);
+    } finally {
+        clearTimeout(autoAckTimer);
     }
 }
 

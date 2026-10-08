@@ -534,6 +534,9 @@ export async function downloadExecutable() {
         }
 
         if (isUpdate) {
+            if (process.env.NODE_ENV === "production") {
+                throw lastErr || new Error("Pinned yt-dlp integrity update failed.");
+            }
             console.warn(`[yt-dlp] Update failed, keeping existing binary: ${lastErr?.message || lastErr}`);
             ensureExecutable(exePath);
             cleanupOldBackups({ maxKeepOld: 1 });

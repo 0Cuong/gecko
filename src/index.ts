@@ -4,6 +4,8 @@ import { readdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import nodePath from "node:path";
 import http from "node:http";
+import dns from "node:dns/promises";
+import net from "node:net";
 import { Events, Status } from "discord.js";
 
 import { config } from "./config/index.js";
@@ -133,9 +135,55 @@ let isIntegrityVerified = false;
 let integrityStatusString = "unverified";
 const startupTimestamp = Date.now();
 
+async function probeDiscordConnectivity(): Promise<void> {
+    const hostname = "gateway.discord.gg";
+
+    try {
+        const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+        console.info(`[Gecko:NetProbe] ${hostname} DNS resolved to ${addresses.length} address(es).`);
+
+        const ipv4 = addresses.find((entry) => net.isIPv4(entry.address));
+        if (ipv4) {
+            await new Promise<void>((resolve) => {
+                let settled = false;
+                const socket = net.createConnection({ host: ipv4.address, port: 443, timeout: 5000 });
+
+                const finish = (message: string, level: "info" | "warn") => {
+                    if (settled) return;
+                    settled = true;
+                    socket.destroy();
+                    if (level === "info") console.info(`[Gecko:NetProbe] ${message}`);
+                    else console.warn(`[Gecko:NetProbe] ${message}`);
+                    resolve();
+                };
+
+                socket.once("connect", () => finish("gateway.discord.gg TCP/443 reachable.", "info"));
+                socket.once("timeout", () => finish("gateway.discord.gg TCP/443 timed out.", "warn"));
+                socket.once("error", (err: Error) => finish(`gateway.discord.gg TCP/443 failed: ${err.message}`, "warn"));
+            });
+        } else {
+            console.warn("[Gecko:NetProbe] No IPv4 DNS answer was available for gateway.discord.gg.");
+        }
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Gecko:NetProbe] DNS probe failed: ${message}`);
+    }
+
+    try {
+        const response = await fetch("https://discord.com/api/v10/gateway", {
+            signal: AbortSignal.timeout(10_000),
+            headers: { "user-agent": "Gecko/1.0 network-probe" }
+        });
+        console.info(`[Gecko:NetProbe] Discord HTTPS /gateway responded with HTTP ${response.status}.`);
+        await response.arrayBuffer();
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Gecko:NetProbe] Discord HTTPS /gateway probe failed: ${message}`);
+    }
+}
+
 function getDiscordStatusString(status: number): string {
-    switch (status) {
-        case Status.Ready: return "connected";
+    switch (status) {        case Status.Ready: return "connected";
         case Status.Connecting: return "connecting";
         case Status.Reconnecting: return "reconnecting";
         case Status.Idle: return "idle";
@@ -236,7 +284,7 @@ async function loginWithRetry(
         try {
             const loginPromise = client.login(token);
             const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("Login request timed out after 30 seconds")), 30000)
+                setTimeout(() => reject(new Error("Discord login did not complete within 60 seconds")), 60000)
             );
 
             await Promise.race([loginPromise, timeoutPromise]);
@@ -294,6 +342,16 @@ async function main(): Promise<void> {
     const client = new GeckoClient();
     client.config = config;
 
+    client.on(Events.Debug, (message) => {
+        console.info(`[Gecko:DiscordDebug] ${message}`);
+    });
+    client.on(Events.Warn, (message) => {
+        console.warn(`[Gecko:DiscordWarn] ${message}`);
+    });
+    client.on(Events.ShardError, (error, shardId) => {
+        totalErrorCount++;
+        console.error(`[Gecko:DiscordShardError] Shard ${shardId}: ${error instanceof Error ? error.stack || error.message : String(error)}`);
+    });
     const port = Number(process.env.PORT) === 8080 ? 3000 : (Number(process.env.PORT) || 3000);
     const server = http.createServer(async (req, res) => {
         try {
@@ -682,6 +740,8 @@ async function main(): Promise<void> {
     process.on("SIGTERM", () => void shutdown(0));
 
     if (hasToken && config.token) {
+        await probeDiscordConnectivity();
+
         discordLoginWatchdog = setTimeout(() => {
             if (isReady || shutdownStarted) return;
 

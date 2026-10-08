@@ -135,13 +135,18 @@ export class SecurityManager {
         const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
         if (!hostname) throw new Error("URL hostname is required");
 
-        if (!options.allowUnlistedPublic && !SecurityManager.hostAllowed(hostname)) {
-            throw new Error("External destination is not allowlisted");
+        if (net.isIP(hostname)) {
+            if (SecurityManager.isPrivateIp(hostname)) {
+                throw new Error("Access to private or reserved IP is forbidden");
+            }
+            if (!options.allowUnlistedPublic) {
+                throw new Error("External destination is not allowlisted");
+            }
+            return;
         }
 
-        if (net.isIP(hostname)) {
-            if (SecurityManager.isPrivateIp(hostname)) throw new Error("Access to private or reserved IP is forbidden");
-            return;
+        if (!options.allowUnlistedPublic && !SecurityManager.hostAllowed(hostname)) {
+            throw new Error("External destination is not allowlisted");
         }
 
         let addresses: Array<{ address: string }>;

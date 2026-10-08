@@ -699,7 +699,7 @@ const PIPED_TRUSTED_ROOTS = [
 ] as const;
 
 function extractYouTubeVideoId(url: string): string | null {
-    return /(?:youtube\\.com\\/(?:watch\\?[^#]*v=|shorts\\/|embed\\/)|youtu\\.be\\/)([A-Za-z0-9_-]{11})/i.exec(url)?.[1] ?? null;
+    return /(?:youtube\.com\/(?:watch\?[^#]*v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i.exec(url)?.[1] ?? null;
 }
 
 function isTrustedPipedHost(url: string): boolean {

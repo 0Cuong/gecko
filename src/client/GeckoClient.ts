@@ -28,6 +28,45 @@ export class GeckoClient extends Client {
 
     public constructor() {
         super({ intents: defaultIntents });
+        this.installDirectGatewayFallback();
+    }
+
+    /**
+     * Some shared cloud egress IPs can be rate-limited on Discord's /gateway/bot
+     * REST route even when the Gateway WebSocket itself is reachable. When the
+     * explicit fallback is enabled, bypass only that discovery request and use
+     * Discord's canonical Gateway URL with a single shard.
+     */
+    private installDirectGatewayFallback(): void {
+        if (process.env.GECKO_DIRECT_GATEWAY_FALLBACK !== "true") return;
+
+        const wsWrapper = this.ws as any;
+        const descriptor = Object.getOwnPropertyDescriptor(wsWrapper, "_ws");
+        if (!descriptor || !descriptor.configurable) return;
+
+        let internalManager: any = null;
+        const gatewayInformation = {
+            url: "wss://gateway.discord.gg",
+            shards: 1,
+            session_start_limit: {
+                total: 1000,
+                remaining: 1000,
+                reset_after: 0,
+                max_concurrency: 1,
+            },
+        };
+
+        Object.defineProperty(wsWrapper, "_ws", {
+            configurable: true,
+            enumerable: descriptor.enumerable,
+            get: () => internalManager,
+            set: (value: any) => {
+                internalManager = value;
+                if (value && typeof value.fetchGatewayInformation === "function") {
+                    value.fetchGatewayInformation = async () => gatewayInformation;
+                }
+            },
+        });
     }
 
     public async registerCommands(): Promise<void> {

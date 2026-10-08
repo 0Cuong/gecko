@@ -4,6 +4,7 @@ import type { GeckoClient } from "../client/GeckoClient.js";
 import { securityManager, sanitizeUserErrorMessage } from "../utils/security.js";
 import { dbAdapter } from "../database/DatabaseAdapter.js";
 import { PermissionsBitField, GuildMember } from "discord.js";
+import { deferInteractionDirect, editOriginalResponseDirect, followUpDirect } from "../utils/discordRest.js";
 
 const DM_SCOPE = "DM";
 const DJ_COMMANDS = new Set(["clear", "remove", "move", "stop", "leave", "volume", "loop", "shuffle", "autoplay", "previous"]);
@@ -20,6 +21,34 @@ export default async function interactionCreate(
     console.info(
         `[Music][Interaction] Received /${commandName} guild=${guildId} user=${interaction.user.id}`,
     );
+
+    // Every slash command must be acknowledged before database, permission,
+    // member lookup, resolver, or voice work. This is the only safe way to
+    // handle the Render -> Discord REST 429 condition without dropping users.
+    try {
+        await deferInteractionDirect(interaction);
+        console.info(`[Music][Interaction] ACK /${commandName} succeeded.`);
+    } catch (error) {
+        console.error(`[Music][Interaction] ACK /${commandName} failed; command skipped.`, error);
+        return;
+    }
+
+    const responseAware = interaction as ChatInputCommandInteraction & {
+        reply: (options?: any) => Promise<any>;
+        editReply: (options?: any) => Promise<any>;
+        followUp: (options?: any) => Promise<any>;
+        deferReply: (options?: any) => Promise<any>;
+    };
+
+    // Commands were written against discord.js InteractionResponses. Bridge those
+    // methods to the same resilient transport after the initial defer.
+    responseAware.reply = async (options = {}) =>
+        editOriginalResponseDirect(interaction, (options ?? {}) as Record<string, unknown>);
+    responseAware.editReply = async (options = {}) =>
+        editOriginalResponseDirect(interaction, (options ?? {}) as Record<string, unknown>);
+    responseAware.followUp = async (options = {}) =>
+        followUpDirect(interaction, (options ?? {}) as Record<string, unknown>);
+    responseAware.deferReply = async () => undefined;
 
     try {
         const command = client.commands.get(commandName);

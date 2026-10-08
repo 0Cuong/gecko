@@ -320,7 +320,8 @@ function injectNetworkingAndCookies(args: string[], url: string, opts: Record<st
     // The Android client is the preferred server-side playback client because it
     // avoids the web flow that is producing LOGIN_REQUIRED/BOT_DETECTION on Render.
     const hasExplicitExtractorArgs = Boolean(opts.extractorArgs || opts["extractor-args"]);
-    if (isYouTubeUrl(url) && !hasExplicitExtractorArgs) {
+    const isYouTube = /(?:youtube\.com|youtu\.be)\//i.test(url);
+    if (isYouTube && !hasExplicitExtractorArgs) {
         args.push("--extractor-args", "youtube:player_client=android");
     }
 

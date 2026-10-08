@@ -21,39 +21,12 @@ export default async function interactionCreate(
         `[Music][Interaction] Received /${commandName} guild=${guildId} user=${interaction.user.id}`,
     );
 
-    // Discord requires an initial acknowledgement within ~3 seconds.
-    // Protect slower commands with a 2s safety defer, then bridge legacy reply() calls.
-    const originalReply = interaction.reply.bind(interaction);
-    let autoAcknowledged = false;
-    const autoAckTimer = setTimeout(() => {
-        if (interaction.replied || interaction.deferred || !interaction.isRepliable()) return;
+    // Commands own their acknowledgement path so each command can choose the
+    // correct response semantics. /play uses the hardened direct REST transport.
 
-        autoAcknowledged = true;
-        void interaction.deferReply().then(() => {
-            console.info(`[Music][Interaction] Auto-deferred /${commandName} after 2000ms.`);
-        }).catch((error) => {
-            autoAcknowledged = false;
-            console.warn(
-                `[Music][Interaction] Auto-defer failed /${commandName}:`,
-                error instanceof Error ? error.message : String(error),
-            );
-        });
-    }, 2000);
-
-    const interactionAny = interaction as any;
-    interactionAny.reply = async (options: any = {}) => {
-        if (interaction.deferred) {
-            const { flags: _flags, ...editOptions } = options ?? {};
-            return interaction.editReply(editOptions);
-        }
-        if (interaction.replied) {
-            return interaction.followUp(options);
-        }
-        return originalReply(options);
-    };
-
-    const command = client.commands.get(commandName);
-    if (!command) {
+    try {
+        const command = client.commands.get(commandName);
+        if (!command) {
         clearTimeout(autoAckTimer);
         console.warn(`[Music][Interaction] Unknown command /${commandName}; replying instead of silently dropping interaction.`);
         try {
@@ -121,6 +94,10 @@ export default async function interactionCreate(
         await handleCommandError(interaction, err);
     } finally {
         clearTimeout(autoAckTimer);
+    }
+    } catch (err) {
+        console.error(`[Music][Interaction] Pre-command handling failed command=${commandName} guild=${guildId}:`, err);
+        await handleCommandError(interaction, err);
     }
 }
 

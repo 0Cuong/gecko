@@ -4,7 +4,7 @@ A Discord music bot built with Node.js, TypeScript, and `discord.js`. It streams
 
 ## Requirements
 
-- Node.js >= 20.0.0
+- Node.js >= 24.0.0
 - Package manager: `pnpm` (recommended), `npm`, or `yarn`
 - FFmpeg (provided via `ffmpeg-static` or a system installation set in `FFMPEG_PATH`)
 - Python and C++ build tools (required for compiling native modules such as `@discordjs/opus` or `sodium-native`)
@@ -62,6 +62,9 @@ cp .env.example .env
 | `MAX_QUEUE_SIZE`      | No       | `500`   | Maximum number of tracks in queue                            |
 | `MAX_PLAYLIST_SIZE`   | No       | `100`   | Maximum tracks imported per playlist                         |
 | `PORT`                | No       | `3000`  | Port for health check and metrics server                     |
+| `CONTROL_CENTER_KEY`   | Production | —     | Required Control Center authentication secret                |
+| `CONTROL_CENTER_ORIGIN`| No       | —       | Optional exact browser origin allowed to call the Control Center API |
+| `BIND_HOST`            | Production | `127.0.0.1` | HTTP bind address; use a trusted private interface behind a proxy |
 | `SPOTIFY_CLIENT_ID`   | No       | —       | Spotify API client ID for Spotify link support               |
 | `SPOTIFY_CLIENT_SECRET`| No     | —       | Spotify API client secret for Spotify link support           |
 

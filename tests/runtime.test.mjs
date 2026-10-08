@@ -51,7 +51,7 @@ assert.equal(ffmpegRetry.next('ffmpeg', new Error('FFmpeg exited 1')).retry, fal
 
 const botRetry = new RetryManager();
 const botErr = new Error('Sign in to confirm you’re not a bot');
-(botErr as any).code = 'BOT_DETECTION';
+botErr.code = 'BOT_DETECTION';
 const botDecision1 = botRetry.next('bot-track', botErr);
 assert.equal(botDecision1.strategy, 'bot-detection', 'bot-detection errors must be classified accurately');
 assert.equal(botDecision1.retry, true, 'bot-detection allows at most one fallback re-extraction attempt');

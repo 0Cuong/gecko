@@ -315,6 +315,15 @@ function injectNetworkingAndCookies(args: string[], url: string, opts: Record<st
     }
 
     if (isTikTok) args.push("--extractor-args", "tiktok:api_hostname=api-h2.tiktok.com;prefer_webpage=false");
+
+    // YouTube currently applies bot/SABR restrictions to several web clients.
+    // The Android client is the preferred server-side playback client because it
+    // avoids the web flow that is producing LOGIN_REQUIRED/BOT_DETECTION on Render.
+    const hasExplicitExtractorArgs = Boolean(opts.extractorArgs || opts["extractor-args"]);
+    if (isYouTubeUrl(url) && !hasExplicitExtractorArgs) {
+        args.push("--extractor-args", "youtube:player_client=android");
+    }
+
     if (opts.extractorArgs || opts["extractor-args"]) {
         const uArgs = mergeExtractorArgs(opts.extractorArgs || opts["extractor-args"]);
         for (let i = 0; i < uArgs.length; i++) args.push(uArgs[i]);

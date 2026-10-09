@@ -983,6 +983,30 @@ export async function createAudioStream(
                 };
             };
 
+            // InnerTube can return a signed audio-only googlevideo URL even when yt-dlp
+            // stalls. Prefer that first, before relying on community Piped instances.
+            const videoIdForInnerTube = extractYouTubeVideoId(url);
+            if (videoIdForInnerTube) {
+                try {
+                    const { fetchInnerTubeAudioStream } = await import("./youtube-innertube.js");
+                    const directAudio = await fetchInnerTubeAudioStream(videoIdForInnerTube);
+                    if (directAudio) {
+                        await SecurityManager.assertPublicHttpUrl(directAudio.url, { allowUnlistedPublic: true });
+                        return {
+                            type: "direct",
+                            stream: null,
+                            process: null,
+                            url: directAudio.url,
+                            headers: directAudio.headers,
+                            ffmpegArgs: [],
+                            expiresAt: directAudio.expiresAt,
+                        };
+                    }
+                } catch (innerTubeError) {
+                    console.warn("[Stream] InnerTube audio recovery failed:", innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError));
+                }
+            }
+
             const pipedFirst = ["TIMEOUT", "NETWORK_ERROR", "RATE_LIMIT", "FORBIDDEN"].includes(extractionError.code);
             if (pipedFirst) {
                 try {

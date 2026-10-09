@@ -134,6 +134,152 @@ const CLIENT_PRESETS: readonly InnerTubeClientConfig[] = Object.freeze([
     }
 ]);
 
+export interface InnerTubeAudioStream {
+    readonly url: string;
+    readonly headers: Record<string, string>;
+    /** Unix milliseconds; used to prevent use of short-lived signed URLs after expiry. */
+    readonly expiresAt: number;
+    readonly clientName: string;
+}
+
+function isTrustedGoogleVideoUrl(value: string): boolean {
+    try {
+        const parsed = new URL(value);
+        const hostname = parsed.hostname.toLowerCase();
+        return parsed.protocol === "https:" &&
+            (hostname === "googlevideo.com" || hostname.endsWith(".googlevideo.com"));
+    } catch {
+        return false;
+    }
+}
+
+/** Pure parser: only accepts direct HTTPS audio URLs from YouTube's media CDN. */
+export function extractInnerTubeAudioStream(
+    response: any,
+    client: { readonly name: string; readonly userAgent: string },
+): InnerTubeAudioStream | null {
+    if (!response || typeof response !== "object") return null;
+    const playability = response.playabilityStatus?.status;
+    if (playability && playability !== "OK") return null;
+
+    const streamingData = response.streamingData;
+    const formats = [
+        ...(Array.isArray(streamingData?.adaptiveFormats) ? streamingData.adaptiveFormats : []),
+        ...(Array.isArray(streamingData?.formats) ? streamingData.formats : []),
+    ];
+    const candidates = formats
+        .filter((format: any) =>
+            format &&
+            typeof format.url === "string" &&
+            /^audio\//i.test(String(format.mimeType ?? "")) &&
+            isTrustedGoogleVideoUrl(format.url),
+        )
+        .sort((a: any, b: any) => {
+            const aOpus = /opus/i.test(String(a.mimeType ?? "")) ? 1 : 0;
+            const bOpus = /opus/i.test(String(b.mimeType ?? "")) ? 1 : 0;
+            if (aOpus !== bOpus) return bOpus - aOpus;
+            return Number(b.averageBitrate ?? b.bitrate ?? 0) -
+                Number(a.averageBitrate ?? a.bitrate ?? 0);
+        });
+
+    for (const format of candidates) {
+        try {
+            const mediaUrl = new URL(format.url);
+            const rawExpiry = Number(mediaUrl.searchParams.get("expire") ?? mediaUrl.searchParams.get("x-expires"));
+            const expiresAt = Number.isFinite(rawExpiry) && rawExpiry > 1_000_000_000
+                ? rawExpiry * 1_000
+                : Date.now() + 120_000;
+            if (expiresAt <= Date.now() + 15_000) continue;
+
+            return {
+                url: mediaUrl.toString(),
+                headers: {
+                    "User-Agent": client.userAgent,
+                    "Referer": "https://www.youtube.com/",
+                    "Origin": "https://www.youtube.com",
+                },
+                expiresAt,
+                clientName: client.name,
+            };
+        } catch {
+            // Skip malformed or expired candidates without failing other formats.
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Ask YouTube's player endpoint for a direct audio-only format. This is a bounded
+ * recovery path for cases where yt-dlp's extractor hangs; it intentionally refuses
+ * signatureCipher-only formats because Gecko does not implement YouTube signature deciphering.
+ */
+export async function fetchInnerTubeAudioStream(videoId: string): Promise<InnerTubeAudioStream | null> {
+    const cleanVideoId = String(videoId ?? "").replace(/[^a-zA-Z0-9_-]/g, "").trim();
+    if (!cleanVideoId) return null;
+
+    const preferredClients = ["ANDROID_MUSIC", "ANDROID", "WEB", "IOS"];
+    for (const clientName of preferredClients) {
+        const config = CLIENT_PRESETS.find((preset) => preset.name === clientName);
+        if (!config) continue;
+
+        const clientContext: Record<string, any> = {
+            clientName: config.clientName,
+            clientVersion: config.clientVersion,
+            hl: config.hl,
+            gl: config.gl,
+        };
+        if (config.androidSdkVersion) clientContext.androidSdkVersion = config.androidSdkVersion;
+        if (config.deviceModel) clientContext.deviceModel = config.deviceModel;
+        if (config.osName) clientContext.osName = config.osName;
+        if (config.osVersion) clientContext.osVersion = config.osVersion;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3_000);
+        try {
+            const { statusCode, body } = await request("https://www.youtube.com/youtubei/v1/player", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "User-Agent": config.userAgent,
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "X-YouTube-Client-Name": config.headerId,
+                    "X-YouTube-Client-Version": config.clientVersion,
+                },
+                body: JSON.stringify({
+                    context: { client: clientContext },
+                    videoId: cleanVideoId,
+                    contentCheckOk: true,
+                    racyCheckOk: true,
+                }),
+                dispatcher: httpAgent,
+                signal: controller.signal,
+                headersTimeout: 2_500,
+                bodyTimeout: 2_500,
+            });
+            if (statusCode !== 200) {
+                await body.dump().catch(() => {});
+                continue;
+            }
+
+            const response = await body.json();
+            const result = extractInnerTubeAudioStream(response, config);
+            if (result) {
+                console.info("[Stream] InnerTube audio recovered client=" + result.clientName + " video=" + cleanVideoId);
+                return result;
+            }
+        } catch (error) {
+            if (process.env.MUSIC_DEBUG === "true") {
+                console.debug("[Stream] InnerTube audio client=" + clientName + " failed: " + (error instanceof Error ? error.message : String(error)));
+            }
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    return null;
+}
+
 /**
  * Universal Text Extraction Helper (Handles `simpleText`, `runs`, `label`, `text`, primitives)
  */

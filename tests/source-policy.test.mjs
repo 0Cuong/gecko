@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { validateExpiry, validateSource, validateStream } from '../dist/sources/stream-resolver.js';
 import { shouldRecoverYouTubeStream } from '../dist/sources/ytdlp-wrapper.js';
+import { extractInnerTubeAudioStream } from '../dist/sources/youtube-innertube.js';
 import fs from 'node:fs';
 
 const tiktok = {
@@ -8,6 +9,29 @@ const tiktok = {
   title: 'Original TikTok', author: 'creator', duration: 10, thumbnail: '', isLive: false,
 };
 validateSource(tiktok);
+
+const signedAudioExpiry = Math.floor(Date.now() / 1000) + 300;
+const directAudioUrl = 'https://rr1---sn.googlevideo.com/videoplayback?expire=' + signedAudioExpiry;
+const innertubeAudio = extractInnerTubeAudioStream({
+  playabilityStatus: { status: 'OK' },
+  streamingData: { adaptiveFormats: [
+    { mimeType: 'audio/mp4; codecs="mp4a.40.2"', url: directAudioUrl, bitrate: 128000 },
+    { mimeType: 'audio/webm; codecs="opus"', url: directAudioUrl, bitrate: 96000 },
+    { mimeType: 'audio/webm; codecs="opus"', url: 'https://evil.example/audio', bitrate: 256000 },
+  ] },
+}, { name: 'ANDROID', userAgent: 'Gecko-test' });
+assert.equal(innertubeAudio?.url, directAudioUrl);
+assert.equal(innertubeAudio?.clientName, 'ANDROID');
+assert.equal(innertubeAudio?.expiresAt, signedAudioExpiry * 1000);
+assert.equal(innertubeAudio?.headers['User-Agent'], 'Gecko-test');
+assert.equal(extractInnerTubeAudioStream({
+  playabilityStatus: { status: 'LOGIN_REQUIRED' },
+  streamingData: { adaptiveFormats: [{ mimeType: 'audio/webm', url: directAudioUrl }] },
+}, { name: 'ANDROID', userAgent: 'Gecko-test' }), null);
+assert.equal(extractInnerTubeAudioStream({
+  playabilityStatus: { status: 'OK' },
+  streamingData: { adaptiveFormats: [{ mimeType: 'audio/webm', signatureCipher: 's=opaque' }] },
+}, { name: 'ANDROID', userAgent: 'Gecko-test' }), null);
 
 assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT'), true);
 assert.equal(shouldRecoverYouTubeStream('https://youtu.be/dQw4w9WgXcQ', 'BOT_DETECTION'), true);

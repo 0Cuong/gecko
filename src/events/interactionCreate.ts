@@ -33,11 +33,14 @@ export default async function interactionCreate(
         return;
     }
 
-    const responseAware = interaction as ChatInputCommandInteraction & {
-        reply: (options?: any) => Promise<any>;
-        editReply: (options?: any) => Promise<any>;
-        followUp: (options?: any) => Promise<any>;
-        deferReply: (options?: any) => Promise<any>;
+    // Keep this compatibility bridge separate from discord.js's overloaded
+    // InteractionResponses interface; these methods intentionally use the
+    // resilient REST transport and have a looser return type than discord.js.
+    const responseAware = interaction as unknown as {
+        reply: (options?: any) => Promise<unknown>;
+        editReply: (options?: any) => Promise<unknown>;
+        followUp: (options?: any) => Promise<unknown>;
+        deferReply: (options?: any) => Promise<unknown>;
     };
 
     // Commands were written against discord.js InteractionResponses. Bridge those

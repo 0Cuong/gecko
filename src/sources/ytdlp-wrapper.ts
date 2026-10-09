@@ -626,12 +626,16 @@ export default async function ytdl(url: string, opts: Record<string, any> = {}, 
     if (isTikTokUrl(url)) return runTikTokRecoveryPipeline(url, opts, spawnOpts);
 
     const cacheKey = `${url}:${Boolean(opts.dumpSingleJson)}:${Boolean(opts.flatPlaylist)}`;
+    // Alternate player clients and forced refreshes are distinct extractor attempts;
+    // never let a pending default-client call swallow a recovery request.
+    const extractorVariant = String(opts.extractorArgs || opts["extractor-args"] || "default");
+    const flightKey = `${cacheKey}:${extractorVariant}:${Boolean(opts.forceNoCache)}:${Boolean(opts._isRecovery)}`;
     if (!opts.forceNoCache) {
         const cached = wrapperMetadataCache.get(cacheKey);
         if (cached) return cached;
     }
 
-    return wrapperSingleflight.do(cacheKey, 25_000, async () => {
+    return wrapperSingleflight.do(flightKey, 25_000, async () => {
         const maxRetries = opts.retryCount ?? 1;
         let lastError: any = null;
 
@@ -697,6 +701,19 @@ const PIPED_TRUSTED_ROOTS = [
     "garudalinux.org",
     "rivo.lol",
 ] as const;
+
+const YOUTUBE_RECOVERY_ERROR_CODES: ReadonlySet<string> = new Set([
+    "BOT_DETECTION", "FORBIDDEN", "LOGIN_REQUIRED", "RATE_LIMIT",
+    "TIMEOUT", "NETWORK_ERROR", "EXTRACT_FAILED", "UPDATE_REQUIRED",
+]);
+
+/**
+ * YouTube extraction failures caused by transient network timeouts or client policy
+ * must be offered alternate-player/Piped recovery before repeating the same pipe path.
+ */
+export function shouldRecoverYouTubeStream(url: string, errorCode: string, fallbackAlreadyTried = false): boolean {
+    return !fallbackAlreadyTried && /(?:youtube\\.com|youtu\\.be)\\//i.test(url) && YOUTUBE_RECOVERY_ERROR_CODES.has(errorCode);
+}
 
 function extractYouTubeVideoId(url: string): string | null {
     return /(?:youtube\.com\/(?:watch\?[^#]*v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i.exec(url)?.[1] ?? null;
@@ -943,68 +960,88 @@ export async function createAudioStream(
         invalidateStreamCache(url);
         extractionError = err instanceof YTDPLError ? err : classifyError(err, "", url);
 
-        // If this is a bot detection or fatal/non-retryable error, DO NOT blindly fall back to pipe streaming
-        // because running the same URL through yt-dlp pipe will fail for the exact same reason!
-        if (["BOT_DETECTION", "VIDEO_UNAVAILABLE", "LOGIN_REQUIRED", "NON_RETRYABLE", "TIKTOK_BLOCKED", "LIVE_ENDED"].includes(extractionError.code)) {
-            // Attempt fallback player client if it's YouTube bot detection
-            if (extractionError.code === "BOT_DETECTION" && url.includes("youtube.com") && !options._triedFallback) {
-                try {
-                    const fallbackClients = [
-                        "tv",
-                        "web_embedded",
-                        "android_vr",
-                    ];
+        // Recover YouTube on both bot/client blocks and transient extraction timeouts.
+        // A pipe retry against the same URL repeats the failing extractor path and bypasses
+        // alternate-player and Piped recovery.
+        const shouldRecoverYouTube = shouldRecoverYouTubeStream(url, extractionError.code, Boolean(options._triedFallback));
+        if (shouldRecoverYouTube) {
+            let pipedAttempted = false;
+            const recoverWithPiped = async (): Promise<AudioStreamResult | null> => {
+                pipedAttempted = true;
+                const id = extractYouTubeVideoId(url);
+                if (!id) return null;
+                const piped = await resolvePipedAudio(id);
+                if (!piped) return null;
+                return {
+                    type: "direct",
+                    stream: null,
+                    process: null,
+                    url: piped.url,
+                    headers: piped.headers,
+                    ffmpegArgs: [],
+                    expiresAt: piped.expiresAt,
+                };
+            };
 
-                    for (const playerClient of fallbackClients) {
-                        try {
-                            const fallbackArgs = "youtube:player_client=" + playerClient + ";player_skip=configs";
-                            console.info("[Stream] YouTube playback fallback client=" + playerClient + " video=" + url);
-                            const fallbackInfo = await ytdl(url, {
-                                ...options,
-                                dumpSingleJson: true,
-                                forceNoCache: true,
-                                extractorArgs: fallbackArgs,
-                                _triedFallback: true,
-                            });
-                            const direct = extractDirectAudioStream(fallbackInfo);
-                            if (direct && direct.url) {
-                                console.info("[Stream] YouTube playback recovered with client=" + playerClient);
-                                return {
-                                    type: "direct",
-                                    stream: null,
-                                    process: null,
-                                    url: direct.url,
-                                    headers: direct.headers,
-                                    ffmpegArgs: direct.ffmpegArgs,
-                                    expiresAt: direct.expiresAt * 1000,
-                                };
-                            }
-                        } catch (fallbackError: any) {
-                            extractionError = fallbackError instanceof YTDPLError
-                                ? fallbackError
-                                : classifyError(fallbackError, "", url);
-                            console.warn("[Stream] YouTube fallback client=" + playerClient + " failed: " + extractionError.code);
-                        }
-                    }
-                    const pipedVideoId = extractYouTubeVideoId(url);
-                    if (pipedVideoId) {
-                        const piped = await resolvePipedAudio(pipedVideoId);
-                        if (piped) {
-                            return {
-                                type: "direct",
-                                stream: null,
-                                process: null,
-                                url: piped.url,
-                                headers: piped.headers,
-                                ffmpegArgs: [],
-                                expiresAt: piped.expiresAt,
-                            };
-                        }
-                    }
-                } catch (fallbackErr: any) {
-                    extractionError = fallbackErr instanceof YTDPLError ? fallbackErr : classifyError(fallbackErr, "", url);
+            const pipedFirst = ["TIMEOUT", "NETWORK_ERROR", "RATE_LIMIT", "FORBIDDEN"].includes(extractionError.code);
+            if (pipedFirst) {
+                try {
+                    const recovered = await recoverWithPiped();
+                    if (recovered) return recovered;
+                } catch (fallbackError) {
+                    console.warn("[Stream] YouTube Piped recovery failed:", fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
                 }
             }
+
+            const fallbackClients = ["tv", "web_embedded", "android_vr"];
+            for (const playerClient of fallbackClients) {
+                try {
+                    const fallbackArgs = "youtube:player_client=" + playerClient + ";player_skip=configs";
+                    console.info("[Stream] YouTube playback fallback client=" + playerClient + " video=" + url);
+                    const fallbackInfo = await ytdl(url, {
+                        ...options,
+                        dumpSingleJson: true,
+                        forceNoCache: true,
+                        extractorArgs: fallbackArgs,
+                        timeout: 8_000,
+                        retryCount: 0,
+                        _triedFallback: true,
+                    });
+                    const direct = extractDirectAudioStream(fallbackInfo);
+                    if (direct?.url) {
+                        console.info("[Stream] YouTube playback recovered with client=" + playerClient);
+                        return {
+                            type: "direct",
+                            stream: null,
+                            process: null,
+                            url: direct.url,
+                            headers: direct.headers,
+                            ffmpegArgs: direct.ffmpegArgs,
+                            expiresAt: direct.expiresAt * 1000,
+                        };
+                    }
+                } catch (fallbackError: any) {
+                    const fallbackClass = fallbackError instanceof YTDPLError
+                        ? fallbackError
+                        : classifyError(fallbackError, "", url);
+                    console.warn("[Stream] YouTube fallback client=" + playerClient + " failed: " + fallbackClass.code);
+                }
+            }
+
+            if (!pipedAttempted) {
+                try {
+                    const recovered = await recoverWithPiped();
+                    if (recovered) return recovered;
+                } catch (fallbackError) {
+                    console.warn("[Stream] YouTube Piped recovery failed:", fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+                }
+            }
+
+            // Do not send a known-failing YouTube URL straight back to the same extractor.
+            throw extractionError;
+        }
+
+        if (["VIDEO_UNAVAILABLE", "NON_RETRYABLE", "TIKTOK_BLOCKED", "LIVE_ENDED"].includes(extractionError.code)) {
             throw extractionError;
         }
     }

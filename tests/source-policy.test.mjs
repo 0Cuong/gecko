@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { validateExpiry, validateSource, validateStream } from '../dist/sources/stream-resolver.js';
+import { shouldRecoverYouTubeStream } from '../dist/sources/ytdlp-wrapper.js';
 import fs from 'node:fs';
 
 const tiktok = {
@@ -7,6 +8,16 @@ const tiktok = {
   title: 'Original TikTok', author: 'creator', duration: 10, thumbnail: '', isLive: false,
 };
 validateSource(tiktok);
+
+assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT'), true);
+assert.equal(shouldRecoverYouTubeStream('https://youtu.be/dQw4w9WgXcQ', 'BOT_DETECTION'), true);
+assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'VIDEO_UNAVAILABLE'), false);
+assert.equal(shouldRecoverYouTubeStream('https://example.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT'), false);
+assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT', true), false);
+
+const streamResolverSource = fs.readFileSync(new URL('../src/sources/stream-resolver.ts', import.meta.url), 'utf8');
+assert.match(streamResolverSource, /const forcePipe = target\\.source === "tiktok";/, 'forceRefresh should re-resolve YouTube instead of forcing the same pipe extractor');
+
 assert.throws(() => validateStream(tiktok, 'youtube', 'https://r1.googlevideo.com/videoplayback'), /Cross-source stream blocked/);
 assert.throws(() => validateStream(tiktok, 'tiktok', 'https://r1.googlevideo.com/videoplayback'), /Cross-source media host blocked/);
 assert.throws(() => validateExpiry(Date.now() - 1), /expired/);

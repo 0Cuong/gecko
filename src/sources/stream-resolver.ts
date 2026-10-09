@@ -47,9 +47,10 @@ export async function resolvePlayableStream(track: TrackMetadata, options: { for
     const target = sourceInput(track); console.info(`[Stream] source=${track.source} id=${track.sourceId} engine=yt-dlp targetSource=${target.source}`);
     let extracted: AudioStreamResult;
     // TikTok CDN URLs are frequently bound to the extractor session and reject a
-    // second client (FFmpeg) with 403. Also on retries (forceRefresh), force pipe extraction
-    // so FFmpeg receives raw audio chunks via stdin instead of re-requesting a failing CDN URL.
-    const forcePipe = target.source === "tiktok" || options.forceRefresh === true;
+    // second client (FFmpeg) with 403, so keep its session-bound pipe path. For other
+    // sources, forceRefresh should invalidate cached URLs but still allow fresh metadata,
+    // alternate YouTube player clients, and Piped recovery to run.
+    const forcePipe = target.source === "tiktok";
     try {
         extracted = await createAudioStream(target.url, { forceNoCache: options.forceRefresh === true || forcePipe, forcePipe });
     } catch (error) {

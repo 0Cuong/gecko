@@ -712,7 +712,7 @@ const YOUTUBE_RECOVERY_ERROR_CODES: ReadonlySet<string> = new Set([
  * must be offered alternate-player/Piped recovery before repeating the same pipe path.
  */
 export function shouldRecoverYouTubeStream(url: string, errorCode: string, fallbackAlreadyTried = false): boolean {
-    return !fallbackAlreadyTried && /(?:youtube\\.com|youtu\\.be)\\//i.test(url) && YOUTUBE_RECOVERY_ERROR_CODES.has(errorCode);
+    return !fallbackAlreadyTried && /(?:youtube\.com|youtu\.be)\//i.test(url) && YOUTUBE_RECOVERY_ERROR_CODES.has(errorCode);
 }
 
 function extractYouTubeVideoId(url: string): string | null {

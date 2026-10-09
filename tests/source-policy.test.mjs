@@ -16,7 +16,7 @@ assert.equal(shouldRecoverYouTubeStream('https://example.com/watch?v=dQw4w9WgXcQ
 assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT', true), false);
 
 const streamResolverSource = fs.readFileSync(new URL('../src/sources/stream-resolver.ts', import.meta.url), 'utf8');
-assert.match(streamResolverSource, /const forcePipe = target\\.source === "tiktok";/, 'forceRefresh should re-resolve YouTube instead of forcing the same pipe extractor');
+assert.match(streamResolverSource, /const forcePipe = target\.source === "tiktok";/, 'forceRefresh should re-resolve YouTube instead of forcing the same pipe extractor');
 
 assert.throws(() => validateStream(tiktok, 'youtube', 'https://r1.googlevideo.com/videoplayback'), /Cross-source stream blocked/);
 assert.throws(() => validateStream(tiktok, 'tiktok', 'https://r1.googlevideo.com/videoplayback'), /Cross-source media host blocked/);

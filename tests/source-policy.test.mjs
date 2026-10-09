@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { validateExpiry, validateSource, validateStream } from '../dist/sources/stream-resolver.js';
-import { shouldRecoverYouTubeStream } from '../dist/sources/ytdlp-wrapper.js';
+import {
+  shouldRecoverYouTubeStream,
+  YOUTUBE_INITIAL_EXTRACTION_TIMEOUT_MS,
+  YOUTUBE_RECOVERY_BUDGET_MS,
+  YOUTUBE_FALLBACK_CLIENT_TIMEOUT_MS,
+  YOUTUBE_PIPED_REQUEST_TIMEOUT_MS,
+} from '../dist/sources/ytdlp-wrapper.js';
 import { extractInnerTubeAudioStream } from '../dist/sources/youtube-innertube.js';
 import fs from 'node:fs';
 
@@ -33,6 +39,10 @@ assert.equal(extractInnerTubeAudioStream({
   streamingData: { adaptiveFormats: [{ mimeType: 'audio/webm', signatureCipher: 's=opaque' }] },
 }, { name: 'ANDROID', userAgent: 'Gecko-test' }), null);
 
+assert.equal(YOUTUBE_INITIAL_EXTRACTION_TIMEOUT_MS, 10_000, 'YouTube initial extraction must not hold playback for 25 seconds');
+assert.equal(YOUTUBE_RECOVERY_BUDGET_MS, 15_000, 'all YouTube recovery paths must share a finite total budget');
+assert.equal(YOUTUBE_FALLBACK_CLIENT_TIMEOUT_MS, 5_000, 'each player client fallback must be individually bounded');
+assert.equal(YOUTUBE_PIPED_REQUEST_TIMEOUT_MS, 2_000, 'each Piped instance request must be bounded');
 assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'TIMEOUT'), true);
 assert.equal(shouldRecoverYouTubeStream('https://youtu.be/dQw4w9WgXcQ', 'BOT_DETECTION'), true);
 assert.equal(shouldRecoverYouTubeStream('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'VIDEO_UNAVAILABLE'), false);

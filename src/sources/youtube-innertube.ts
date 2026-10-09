@@ -214,12 +214,20 @@ export function extractInnerTubeAudioStream(
  * recovery path for cases where yt-dlp's extractor hangs; it intentionally refuses
  * signatureCipher-only formats because Gecko does not implement YouTube signature deciphering.
  */
-export async function fetchInnerTubeAudioStream(videoId: string): Promise<InnerTubeAudioStream | null> {
+export async function fetchInnerTubeAudioStream(
+    videoId: string,
+    options: { maxAttempts?: number; timeoutMs?: number; deadlineAt?: number } = {},
+): Promise<InnerTubeAudioStream | null> {
     const cleanVideoId = String(videoId ?? "").replace(/[^a-zA-Z0-9_-]/g, "").trim();
     if (!cleanVideoId) return null;
 
     const preferredClients = ["ANDROID_MUSIC", "ANDROID", "WEB", "IOS"];
-    for (const clientName of preferredClients) {
+    const maxAttempts = Math.max(1, Math.min(preferredClients.length, Math.floor(options.maxAttempts ?? preferredClients.length)));
+    const perRequestLimitMs = Math.max(250, Math.min(3_000, options.timeoutMs ?? 3_000));
+    for (const clientName of preferredClients.slice(0, maxAttempts)) {
+        const remainingMs = options.deadlineAt === undefined ? perRequestLimitMs : options.deadlineAt - Date.now();
+        if (remainingMs < 250) break;
+        const requestTimeoutMs = Math.max(250, Math.min(perRequestLimitMs, remainingMs));
         const config = CLIENT_PRESETS.find((preset) => preset.name === clientName);
         if (!config) continue;
 
@@ -235,7 +243,7 @@ export async function fetchInnerTubeAudioStream(videoId: string): Promise<InnerT
         if (config.osVersion) clientContext.osVersion = config.osVersion;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3_000);
+        const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
         try {
             const { statusCode, body } = await request("https://www.youtube.com/youtubei/v1/player", {
                 method: "POST",
@@ -254,8 +262,8 @@ export async function fetchInnerTubeAudioStream(videoId: string): Promise<InnerT
                 }),
                 dispatcher: httpAgent,
                 signal: controller.signal,
-                headersTimeout: 2_500,
-                bodyTimeout: 2_500,
+                headersTimeout: Math.min(2_500, requestTimeoutMs),
+                bodyTimeout: Math.min(2_500, requestTimeoutMs),
             });
             if (statusCode !== 200) {
                 await body.dump().catch(() => {});

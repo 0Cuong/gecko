@@ -612,6 +612,12 @@ const wrapperMetadataCache = new LRUCache<string, any>({ maxSize: 400, ttlMs: 15
 // Signed media URLs are transport credentials, not durable metadata. Keep only a small
 // near-term cache for the prefetch hand-off and always invalidate it on playback errors.
 const directStreamUrlCache = new LRUCache<string, ResolvedStreamCache>({ maxSize: 200, ttlMs: 2 * 60 * 1000 });
+
+/** Keep YouTube playback failures bounded instead of spending ~25s per extractor pass. */
+export const YOUTUBE_INITIAL_EXTRACTION_TIMEOUT_MS = 10_000;
+export const YOUTUBE_RECOVERY_BUDGET_MS = 15_000;
+export const YOUTUBE_FALLBACK_CLIENT_TIMEOUT_MS = 5_000;
+export const YOUTUBE_PIPED_REQUEST_TIMEOUT_MS = 2_000;
 const wrapperSingleflight = new Singleflight<any>();
 
 /** Raw yt-dlp payloads often include signed media URLs. They are stream data, not metadata. */
@@ -728,19 +734,22 @@ function isTrustedPipedHost(url: string): boolean {
     }
 }
 
-async function resolvePipedAudio(videoId: string): Promise<{
+async function resolvePipedAudio(videoId: string, deadlineAt?: number): Promise<{
     url: string;
     headers: Record<string, string>;
     expiresAt: number;
 } | null> {
     for (const apiBase of PIPED_API_INSTANCES) {
+        const remainingMs = deadlineAt === undefined ? YOUTUBE_PIPED_REQUEST_TIMEOUT_MS : deadlineAt - Date.now();
+        if (remainingMs <= 0) break;
         try {
+            const requestTimeoutMs = Math.max(250, Math.min(YOUTUBE_PIPED_REQUEST_TIMEOUT_MS, remainingMs));
             const response = await fetch(apiBase + "/streams/" + videoId, {
                 headers: {
                     Accept: "application/json",
                     "User-Agent": "Gecko/1.0 YouTube playback fallback",
                 },
-                signal: AbortSignal.timeout(6_000),
+                signal: AbortSignal.timeout(requestTimeoutMs),
             });
 
             if (!response.ok) {
@@ -932,9 +941,23 @@ export async function createAudioStream(
     }
 
     // 3. SINGLE-PASS METADATA & DIRECT URL RESOLUTION
+    // YouTube requests have their own short first-pass deadline. A default 25s
+    // yt-dlp pass followed by recovery makes /play appear frozen for almost a minute.
+    const isYouTubeUrl = /(?:youtube\.com|youtu\.be)\//i.test(url);
+    const requestedTimeout = Number(options.timeout);
+    const initialExtractionOptions = isYouTubeUrl
+        ? {
+            ...options,
+            timeout: Number.isFinite(requestedTimeout) && requestedTimeout > 0
+                ? Math.min(requestedTimeout, YOUTUBE_INITIAL_EXTRACTION_TIMEOUT_MS)
+                : YOUTUBE_INITIAL_EXTRACTION_TIMEOUT_MS,
+            retryCount: 0,
+        }
+        : options;
+
     let extractionError: YTDPLError | null = null;
     try {
-        const info = await ytdl(url, { ...options, dumpSingleJson: true });
+        const info = await ytdl(url, { ...initialExtractionOptions, dumpSingleJson: true });
         const direct = extractDirectAudioStream(info);
 
         if (direct && direct.url) {
@@ -965,12 +988,15 @@ export async function createAudioStream(
         // alternate-player and Piped recovery.
         const shouldRecoverYouTube = shouldRecoverYouTubeStream(url, extractionError.code, Boolean(options._triedFallback));
         if (shouldRecoverYouTube) {
+            // All recovery paths share one deadline. A failed extractor must not
+            // serially consume 25s + 12s + 18s + 24s before the queue can move on.
+            const recoveryDeadlineAt = Date.now() + YOUTUBE_RECOVERY_BUDGET_MS;
             let pipedAttempted = false;
             const recoverWithPiped = async (): Promise<AudioStreamResult | null> => {
                 pipedAttempted = true;
                 const id = extractYouTubeVideoId(url);
                 if (!id) return null;
-                const piped = await resolvePipedAudio(id);
+                const piped = await resolvePipedAudio(id, recoveryDeadlineAt);
                 if (!piped) return null;
                 return {
                     type: "direct",
@@ -989,7 +1015,11 @@ export async function createAudioStream(
             if (videoIdForInnerTube) {
                 try {
                     const { fetchInnerTubeAudioStream } = await import("./youtube-innertube.js");
-                    const directAudio = await fetchInnerTubeAudioStream(videoIdForInnerTube);
+                    const directAudio = await fetchInnerTubeAudioStream(videoIdForInnerTube, {
+                        maxAttempts: 2,
+                        timeoutMs: 2_500,
+                        deadlineAt: recoveryDeadlineAt,
+                    });
                     if (directAudio) {
                         await SecurityManager.assertPublicHttpUrl(directAudio.url, { allowUnlistedPublic: true });
                         return {
@@ -1019,6 +1049,11 @@ export async function createAudioStream(
 
             const fallbackClients = ["tv", "web_embedded", "android_vr"];
             for (const playerClient of fallbackClients) {
+                const remainingMs = recoveryDeadlineAt - Date.now();
+                if (remainingMs <= 0) {
+                    console.warn("[Stream] YouTube recovery budget exhausted; skipping remaining fallback clients.");
+                    break;
+                }
                 try {
                     const fallbackArgs = "youtube:player_client=" + playerClient + ";player_skip=configs";
                     console.info("[Stream] YouTube playback fallback client=" + playerClient + " video=" + url);
@@ -1027,7 +1062,7 @@ export async function createAudioStream(
                         dumpSingleJson: true,
                         forceNoCache: true,
                         extractorArgs: fallbackArgs,
-                        timeout: 8_000,
+                        timeout: Math.min(YOUTUBE_FALLBACK_CLIENT_TIMEOUT_MS, remainingMs),
                         retryCount: 0,
                         _triedFallback: true,
                     });
